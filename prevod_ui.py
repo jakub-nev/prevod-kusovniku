@@ -4,12 +4,25 @@ Spustit dvojklikem na prevod.bat, nebo:  python prevod_ui.py
 Veškerý výpočet dělá prevod_kusovniku.py, tohle je jen obal.
 """
 import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import prevod_kusovniku as prevod
 
-ZDE = os.path.dirname(os.path.abspath(__file__))
+
+def domovska_slozka():
+    """Kde hledat Archiv a kam psát výsledky.
+
+    V zabaleném .exe je __file__ v dočasném adresáři, ze kterého se program
+    rozbalil - výchozí cesty musí mířit vedle spustitelného souboru.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+ZDE = domovska_slozka()
 
 TMAVA = "#12263a"        # nadpisy a text tabulky
 SEDA = "#5b6b7c"         # vysvětlivky

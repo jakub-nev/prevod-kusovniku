@@ -3,6 +3,7 @@
 Spustit:  python test_prevod_kusovniku.py
 """
 import glob
+import os
 from types import SimpleNamespace
 
 import prevod_kusovniku as p
@@ -92,6 +93,19 @@ def test_otevri_vystup(tmp_path, monkeypatch):
 
     prevod_ui.Okno.otevri_vystup(okno(str(tmp_path / "neexistuje")))
     assert otevrene == [str(tmp_path)] and len(hlasky) == 1
+
+
+def test_domovska_slozka(monkeypatch):
+    """V zabalenem .exe musi vychozi cesty mirit vedle .exe, ne do temp adresare."""
+    import prevod_ui
+
+    slozka = os.path.abspath(os.path.join(os.sep, "appky", "prevod"))
+    monkeypatch.setattr(prevod_ui.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(prevod_ui.sys, "executable", os.path.join(slozka, "prevod.exe"))
+    assert prevod_ui.domovska_slozka() == slozka
+
+    monkeypatch.delattr(prevod_ui.sys, "frozen")
+    assert prevod_ui.domovska_slozka() == os.path.dirname(os.path.abspath(prevod_ui.__file__))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,43 @@
+name: build
+
+# Spustitelne soubory se stavi tam, kam patri - cross-kompilace u PyInstaller
+# neexistuje, macOS binarka musi vzniknout na macOS.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pyinstaller
+      - run: pyinstaller --noconfirm --onefile --windowed --name "Prevod kusovniku" prevod_ui.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prevod-kusovniku-windows
+          path: dist/Prevod kusovniku.exe
+
+  macos-intel:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pyinstaller
+      - run: pyinstaller --noconfirm --windowed --name "Prevod kusovniku" prevod_ui.py
+      - name: Kontrola architektury
+        run: |
+          file "dist/Prevod kusovniku.app/Contents/MacOS/Prevod kusovniku"
+          file "dist/Prevod kusovniku.app/Contents/MacOS/Prevod kusovniku" | grep -q x86_64
+      - name: Zabalit .app
+        run: ditto -c -k --keepParent "dist/Prevod kusovniku.app" "Prevod kusovniku-mac-intel.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prevod-kusovniku-mac-intel
+          path: Prevod kusovniku-mac-intel.zip

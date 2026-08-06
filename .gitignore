@@ -6,6 +6,11 @@ LivIng_MD/
 *.pdf
 *.csv
 
+# Vysledky buildu - spustitelne soubory se rozdavaji pres Releases, ne pres git
+build/
+dist/
+*.spec
+
 __pycache__/
 .pytest_cache/
 .claude/
