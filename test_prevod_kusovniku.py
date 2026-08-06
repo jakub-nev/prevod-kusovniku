@@ -11,6 +11,21 @@ import pytest
 import prevod_kusovniku as p
 
 ARCHIV = r"E:\Documents\odpočty\Archiv"
+# Kusovnik, ktery nekdo otevrel a ulozil ve Wordu -- jina struktura RTF.
+WORDI = r"E:\Documents\odpočty\Nová složka\Kusovník_ (266) _2_30_6_11_4_16.rtf"
+
+
+@pytest.mark.skipif(not os.path.exists(WORDI), reason="ukazkovy soubor uz na disku neni")
+def test_kusovnik_ulozeny_wordem():
+    """Word prepise strukturu RTF, kusovnik musi jit precist i tak.
+
+    Radky tabulky nejsou v {}, nedelitelna mezera je \\~ misto \\'A0 a text
+    je rozsekany na fragmenty podle fontu ('K\\nridlo', '1\\~27\\n2\\n,0').
+    """
+    el = p.nacti_element(WORDI)[0]
+    assert el.pozice == "2"
+    assert "Corona CT 70" in el.system
+    assert el.skla, "nenacetly se tabule skla"
 
 
 def test_cislo():
@@ -188,6 +203,51 @@ def test_vyber_kusovniku_v_okne(okno):
     # jmena souboru z Macu jsou rozsypana, seznam proto ukazuje pozici a rozmery
     assert okno.seznam.get(2).startswith("pozice 2.1")
     assert "550 × 845 mm" in okno.seznam.get(2)
+
+
+def test_okno_ma_zapnuty_drop(okno):
+    """Seznam musi byt registrovany jako cil pro pretazeni souboru."""
+    import prevod_ui
+
+    assert prevod_ui.DND_FILES, "tkinterdnd2 chybi, drag & drop by nefungoval"
+    assert okno.dnd_aktivni
+    cile = okno.tk.call("tkdnd::drop_target", "names", okno.seznam)
+    assert cile, "seznam nema registrovany drop target"
+
+
+def test_drop_souboru_do_okna(okno):
+    """Dropnute kusovniky se pridaji do seznamu a oznaci se.
+
+    TkDnD posila cesty oddelene mezerou, ty s mezerou uvnitr ve slozenych
+    zavorkach -- a cesty v Archivu mezery maji.
+    """
+    okno.vstup.set(ARCHIV)
+    okno.seznam.selection_clear(0, "end")
+    vsechny = p.najdi_kusovniky(ARCHIV)
+
+    okno.pridej_dropnute(" ".join("{" + f + "}" for f in vsechny[:2]))
+    assert sorted(okno.vybrane_soubory()) == sorted(vsechny[:2])
+
+    okno.pridej_dropnute("{" + vsechny[5] + "}")     # druhy drop pridava k vyberu
+    assert sorted(okno.vybrane_soubory()) == sorted(vsechny[:2] + [vsechny[5]])
+    assert okno.seznam.size() == 10, "soubory ze slozky se nesmi duplikovat"
+
+
+def test_prevest_dropnute_bez_platneho_vstupu(okno, tmp_path, monkeypatch):
+    """Po spusteni .exe vedle sebe Archiv nebyva -- dropnute soubory musi stacit."""
+    import prevod_ui
+
+    chyby = []
+    monkeypatch.setattr(prevod_ui.messagebox, "showerror",
+                        lambda *a, **k: chyby.append(a))
+    okno.vstup.set(os.path.join(str(tmp_path), "takova-slozka-neni"))
+    assert okno.seznam.size() == 0, "neexistujici slozka nema co nabidnout"
+
+    okno.vystup.set(str(tmp_path))
+    okno.pridej_dropnute("{" + p.najdi_kusovniky(ARCHIV)[1] + "}")
+    okno.prevest()
+    assert not chyby, chyby
+    assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
 
 
 def test_prevest_zpracuje_jen_vybrane(okno, tmp_path):

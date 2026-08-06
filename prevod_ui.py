@@ -10,6 +10,12 @@ from tkinter import filedialog, messagebox, ttk
 
 import prevod_kusovniku as prevod
 
+try:                                               # drag & drop: TkDnD přes tkinterdnd2
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    ZAKLAD_OKNA = TkinterDnD.Tk
+except ImportError:                                # bez knihovny okno funguje dál, jen bez dropu
+    DND_FILES, ZAKLAD_OKNA = None, tk.Tk
+
 
 def domovska_slozka():
     """Kde hledat Archiv a kam psát výsledky.
@@ -68,7 +74,7 @@ class Tlacitko(tk.Button):
         self.bind("<Leave>", lambda _: self.configure(background=MODRA))
 
 
-class Okno(tk.Tk):
+class Okno(ZAKLAD_OKNA):
     def __init__(self):
         super().__init__()
         self.title("Převod kusovníků  ·  Corona CT 70 AS → Schüco LivIng MD")
@@ -172,6 +178,9 @@ class Okno(tk.Tk):
         ttk.Button(lista, text="Zrušit výběr",
                    command=lambda: self._oznac(False)).pack(side="left", padx=8)
         ttk.Label(lista, textvariable=self.vybrano, style="Tlumene.TLabel").pack(side="left")
+        if DND_FILES:
+            ttk.Label(lista, text="kusovníky sem jdou i přetáhnout",
+                      style="Popisek.TLabel").pack(side="right")
 
         self.seznam = tk.Listbox(ram, selectmode="multiple", activestyle="none",
                                  font=STROJOPIS, background=BILA, foreground=TMAVA,
@@ -183,6 +192,11 @@ class Okno(tk.Tk):
         posuvnik.grid(row=1, column=1, sticky="ns")
         self.seznam.configure(yscrollcommand=posuvnik.set)
         self.seznam.bind("<<ListboxSelect>>", lambda _: self._spocitej_vybrane())
+
+        self.dnd_aktivni = bool(DND_FILES)
+        if self.dnd_aktivni:
+            self.seznam.drop_target_register(DND_FILES)
+            self.seznam.dnd_bind("<<Drop>>", lambda u: self.pridej_dropnute(u.data))
         return ram
 
     def nacti_seznam(self):
@@ -206,6 +220,32 @@ class Okno(tk.Tk):
     def vybrane_soubory(self):
         return [self.soubory[i] for i in self.seznam.curselection()]
 
+    def pridej_dropnute(self, data):
+        """Přidá do seznamu přetažené kusovníky a označí je. Složku vezme jako vstup."""
+        cesty = [os.path.normpath(c) for c in self.tk.splitlist(data)]
+        slozky = [c for c in cesty if os.path.isdir(c)]
+        if slozky:
+            self.vstup.set(slozky[0])              # trace na vstup přenačte seznam sám
+            return
+
+        nove = [c for c in cesty if c.lower().endswith(".rtf")]
+        if not nove:
+            self._nastav_stav("Přetáhni kusovníky (*.rtf) nebo složku s nimi.", CERVENA)
+            return
+
+        drzene = set(self.vybrane_soubory()) | set(nove)
+        for cesta in nove:
+            if cesta not in self.soubory:
+                self.soubory.append(cesta)
+        self.soubory.sort()
+        self.seznam.delete(0, "end")
+        for cesta in self.soubory:
+            self.seznam.insert("end", self._popis(cesta))
+        for i, cesta in enumerate(self.soubory):
+            if cesta in drzene:
+                self.seznam.selection_set(i)
+        self._spocitej_vybrane()
+
     def _oznac(self, vse):
         if self.soubory:
             (self.seznam.selection_set if vse else self.seznam.selection_clear)(0, "end")
@@ -214,7 +254,7 @@ class Okno(tk.Tk):
     def _spocitej_vybrane(self):
         pocet, celkem = len(self.seznam.curselection()), len(self.soubory)
         self.vybrano.set(f"vybráno {pocet} z {celkem}" if celkem
-                         else "ve složce nejsou žádné kusovníky (*.rtf)")
+                         else "žádné kusovníky (*.rtf) — přetáhni je sem")
 
     def _log(self, rodic):
         ram = ttk.Frame(rodic, padding=1)
@@ -288,12 +328,13 @@ class Okno(tk.Tk):
 
     def prevest(self):
         vstup, vystup = self.vstup.get(), self.vystup.get()
-        if not os.path.isdir(vstup):
-            messagebox.showerror("Chyba", f"Složka s kusovníky neexistuje:\n{vstup}")
-            return
         vybrane = self.vybrane_soubory()
-        if not vybrane:
+        if not vybrane:                            # rozhoduje výběr, ne vstupní složka
             self.zalozky.select(0)
+            if not os.path.isdir(vstup):
+                messagebox.showerror("Chyba", f"Složka s kusovníky neexistuje:\n{vstup}\n\n"
+                                              "Vyber jinou, nebo sem kusovníky přetáhni.")
+                return
             self._nastav_stav("Nic není vybráno — zaškrtni kusovníky v záložce Kusovníky.",
                               CERVENA)
             return

@@ -15,8 +15,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install pyinstaller
+      - run: pip install pyinstaller tkinterdnd2
       - run: pyinstaller --noconfirm --onefile --windowed --name "Prevod kusovniku" prevod_ui.py
+      - name: Kontrola, ze se pribalil drag & drop
+        shell: bash
+        run: grep -qa tkdnd "dist/Prevod kusovniku.exe" || (echo "tkinterdnd2 chybi v .exe"; exit 1)
       - uses: actions/upload-artifact@v4
         with:
           name: prevod-kusovniku-windows
@@ -29,7 +32,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install pyinstaller
+      - run: pip install pyinstaller tkinterdnd2
       - run: pyinstaller --noconfirm --windowed --name "Prevod kusovniku" prevod_ui.py
       - name: Kontrola architektury
         run: |

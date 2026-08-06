@@ -132,19 +132,33 @@ def _text(seg):
     s = re.sub(r"\\u(-?\d+)\??", lambda m: chr(int(m.group(1)) % 65536), seg)
     s = re.sub(r"\\'([0-9a-fA-F]{2})",
                lambda m: bytes([int(m.group(1), 16)]).decode("cp1250", "replace"), s)
+    s = s.replace("\\~", "\xa0")                   # Word píše nedělitelnou mezeru takhle
     s = re.sub(r"\\[a-zA-Z]+-?\d* ?", "", s)
-    return s.replace("{", "").replace("}", "").strip()
+    s = s.replace("{", "").replace("}", "")
+    # Word láme řádky uprostřed slov a čísel ('K\nřídlo', '1\xa027\n2\n,0')
+    return re.sub(r"\s*\n\s*", "", s).strip()
+
+
+def _radky(raw):
+    """Řádky tabulek jako [(začátek, konec, buňky)].
+
+    Řádek je text mezi předchozím \\row a tímto. SchüCal obaluje řádky do
+    {\\trowd ... \\row}, Word po uložení závorky nemá a definici sloupců
+    opakuje až před \\row -- dělení podle \\row zvládne obojí.
+    """
+    radky, zac = [], 0
+    for m in re.finditer(r"\\row(?![a-zA-Z])", raw):
+        radky.append((zac, m.end(),
+                      [_text(c) for c in re.split(r"\\cell(?![a-zA-Z])", raw[zac:m.end()])[:-1]]))
+        zac = m.end()
+    return radky
 
 
 def nacti_element(cesta):
     """Vrací (Element, syrový RTF, řádky), řádky = [(začátek, konec, buňky)]."""
     raw = open(cesta, encoding="latin-1").read()
     el = Element(soubor=cesta)
-    # Pozor: \cellx2027 je definice šířky sloupce, ne konec buňky -- dělit jen na
-    # \cell, za kterým nenásleduje písmeno.
-    radky = [(m.start(), m.end(),
-              [_text(c) for c in re.split(r"\\cell(?![a-zA-Z])", m.group(0))[:-1]])
-             for m in re.finditer(r"\{\\trowd.*?\\row\}", raw, re.S)]
+    radky = _radky(raw)
 
     v_sklech, kridla_fe, dverni_fe, ram_rezy = False, set(), set(), []
     for i, (_, _, b) in enumerate(radky):
