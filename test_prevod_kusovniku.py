@@ -6,6 +6,8 @@ import glob
 import os
 from types import SimpleNamespace
 
+import pytest
+
 import prevod_kusovniku as p
 
 ARCHIV = r"E:\Documents\odpočty\Archiv"
@@ -113,6 +115,25 @@ def test_souhrn_skel_scita_shodne_rozmery():
     assert not any(r[-1] for r in radky)         # zadne "overit rucne"
 
 
+def test_najdi_kusovniky():
+    """Ve slozce najde jen kusovniky, ne sestavy a prehledy."""
+    soubory = [os.path.basename(f) for f in p.najdi_kusovniky(ARCHIV)]
+    assert len(soubory) == 10, soubory
+    assert all("usovn" in s for s in soubory)
+    assert not any("estava" in s for s in soubory)
+
+
+def test_spust_jen_vybrane_soubory(tmp_path):
+    """Prevest jde i podmnozinu kusovniku, ne jen celou slozku."""
+    vybrane = p.najdi_kusovniky(ARCHIV)[:1]
+    elementy, text = p.spust(ARCHIV, str(tmp_path), vybrane)
+    assert len(elementy) == 1
+    hotove = sorted(f.name for f in tmp_path.glob("*.rtf"))
+    assert hotove == [f"Kusovník_poz{elementy[0].pozice}_LivIng_MD.rtf"]
+    # CSV se prepisuji jen vybranymi pozicemi, na to musi report upozornit
+    assert "jen 1 z 10" in text
+
+
 def test_otevri_vystup(tmp_path, monkeypatch):
     """Tlacitko 'Otevrit slozku s vysledky': existujici slozku otevre, jinak jen rekne."""
     import prevod_ui
@@ -130,6 +151,41 @@ def test_otevri_vystup(tmp_path, monkeypatch):
 
     prevod_ui.Okno.otevri_vystup(okno(str(tmp_path / "neexistuje")))
     assert otevrene == [str(tmp_path)] and len(hlasky) == 1
+
+
+@pytest.fixture(scope="module")
+def okno():
+    """Jedno okno na vsechny UI testy -- druha tk.Tk() v jednom procesu je krehka."""
+    import prevod_ui
+
+    o = prevod_ui.Okno()
+    o.withdraw()
+    yield o
+    o.destroy()
+
+
+def test_vyber_kusovniku_v_okne(okno):
+    """Okno nabidne kusovniky ze slozky, vsechny predvybrane; vyber jde zuzit."""
+    okno.vstup.set(ARCHIV)                           # zmena slozky seznam prenacte sama
+    assert okno.seznam.size() == 10
+    assert len(okno.vybrane_soubory()) == 10
+
+    okno.seznam.selection_clear(0, "end")
+    okno.seznam.selection_set(2)
+    assert okno.vybrane_soubory() == [okno.soubory[2]]
+    # jmena souboru z Macu jsou rozsypana, seznam proto ukazuje pozici a rozmery
+    assert okno.seznam.get(2).startswith("pozice 2.1")
+    assert "550 × 845 mm" in okno.seznam.get(2)
+
+
+def test_prevest_zpracuje_jen_vybrane(okno, tmp_path):
+    """Tlacitko Prevest bere jen zaskrtnute kusovniky, ne celou slozku."""
+    okno.vstup.set(ARCHIV)
+    okno.vystup.set(str(tmp_path))
+    okno.seznam.selection_clear(0, "end")
+    okno.seznam.selection_set(1)
+    okno.prevest()
+    assert [f.name for f in tmp_path.glob("*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
 
 
 def test_domovska_slozka(monkeypatch):

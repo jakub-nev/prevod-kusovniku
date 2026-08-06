@@ -80,7 +80,9 @@ class Okno(tk.Tk):
         vychozi_vstup = os.path.join(ZDE, "Archiv")
         self.vstup = tk.StringVar(value=vychozi_vstup if os.path.isdir(vychozi_vstup) else ZDE)
         self.vystup = tk.StringVar(value=os.path.join(ZDE, "LivIng_MD"))
-        self.stav = tk.StringVar(value="Vyber složku s kusovníky a stiskni Převést.")
+        self.stav = tk.StringVar(value="Vyber kusovníky a stiskni Převést.")
+        self.vybrano = tk.StringVar(value="")
+        self.soubory = []
 
         ram = ttk.Frame(self, padding=(20, 16, 20, 12))
         ram.pack(fill="both", expand=True)
@@ -95,6 +97,8 @@ class Okno(tk.Tk):
 
         self.bind("<Return>", lambda _: self.prevest())
         self.bind("<F5>", lambda _: self.prevest())
+        self.vstup.trace_add("write", lambda *_: self.nacti_seznam())
+        self.nacti_seznam()
         self._na_stred()
 
     # --- stavba okna ------------------------------------------------------
@@ -151,9 +155,66 @@ class Okno(tk.Tk):
 
     def _zalozky(self, rodic):
         self.zalozky = ttk.Notebook(rodic)
+        self.zalozky.add(self._zalozka_vyberu(self.zalozky), text="Kusovníky")
         self.zalozky.add(self._log(self.zalozky), text="Průběh převodu")
         self.zalozky.add(self._souhrn(self.zalozky), text="Souhrn skel")
         return self.zalozky
+
+    def _zalozka_vyberu(self, rodic):
+        ram = ttk.Frame(rodic, padding=(1, 8, 1, 1))
+        ram.columnconfigure(0, weight=1)
+        ram.rowconfigure(1, weight=1)
+
+        lista = ttk.Frame(ram)
+        lista.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        ttk.Button(lista, text="Vybrat vše",
+                   command=lambda: self._oznac(True)).pack(side="left")
+        ttk.Button(lista, text="Zrušit výběr",
+                   command=lambda: self._oznac(False)).pack(side="left", padx=8)
+        ttk.Label(lista, textvariable=self.vybrano, style="Tlumene.TLabel").pack(side="left")
+
+        self.seznam = tk.Listbox(ram, selectmode="multiple", activestyle="none",
+                                 font=STROJOPIS, background=BILA, foreground=TMAVA,
+                                 selectbackground="#cfe2f5", selectforeground=TMAVA,
+                                 relief="flat", borderwidth=0, highlightthickness=1,
+                                 highlightbackground=CARA, highlightcolor=CARA)
+        self.seznam.grid(row=1, column=0, sticky="nsew")
+        posuvnik = ttk.Scrollbar(ram, orient="vertical", command=self.seznam.yview)
+        posuvnik.grid(row=1, column=1, sticky="ns")
+        self.seznam.configure(yscrollcommand=posuvnik.set)
+        self.seznam.bind("<<ListboxSelect>>", lambda _: self._spocitej_vybrane())
+        return ram
+
+    def nacti_seznam(self):
+        """Naplní seznam kusovníky ze vstupní složky, všechny předvybrané."""
+        slozka = self.vstup.get()
+        self.soubory = prevod.najdi_kusovniky(slozka) if os.path.isdir(slozka) else []
+        self.seznam.delete(0, "end")
+        for cesta in self.soubory:
+            self.seznam.insert("end", self._popis(cesta))
+        self._oznac(True)
+
+    @staticmethod
+    def _popis(cesta):
+        """Pozice a rozměry prvku -- názvy souborů z Macu bývají rozsypané."""
+        try:
+            el = prevod.nacti_element(cesta)[0]
+            return f"pozice {el.pozice:<5} {el.kus:>2} ks   {el.sirka:.0f} × {el.vyska:.0f} mm"
+        except Exception:
+            return os.path.basename(cesta)
+
+    def vybrane_soubory(self):
+        return [self.soubory[i] for i in self.seznam.curselection()]
+
+    def _oznac(self, vse):
+        if self.soubory:
+            (self.seznam.selection_set if vse else self.seznam.selection_clear)(0, "end")
+        self._spocitej_vybrane()
+
+    def _spocitej_vybrane(self):
+        pocet, celkem = len(self.seznam.curselection()), len(self.soubory)
+        self.vybrano.set(f"vybráno {pocet} z {celkem}" if celkem
+                         else "ve složce nejsou žádné kusovníky (*.rtf)")
 
     def _log(self, rodic):
         ram = ttk.Frame(rodic, padding=1)
@@ -230,11 +291,17 @@ class Okno(tk.Tk):
         if not os.path.isdir(vstup):
             messagebox.showerror("Chyba", f"Složka s kusovníky neexistuje:\n{vstup}")
             return
-        self._nastav_stav("Převádím…", SEDA)
+        vybrane = self.vybrane_soubory()
+        if not vybrane:
+            self.zalozky.select(0)
+            self._nastav_stav("Nic není vybráno — zaškrtni kusovníky v záložce Kusovníky.",
+                              CERVENA)
+            return
+        self._nastav_stav(f"Převádím {len(vybrane)} kusovníků…", SEDA)
         self.configure(cursor="watch")
         self.update_idletasks()
         try:
-            elementy, text = prevod.spust(vstup, vystup)
+            elementy, text = prevod.spust(vstup, vystup, vybrane)
         except Exception as chyba:
             self._vypis(f"CHYBA: {chyba}")
             self._nastav_stav("Převod selhal.", CERVENA)
@@ -246,8 +313,8 @@ class Okno(tk.Tk):
         self._vypis(text)
         if not elementy:
             self._napln_souhrn([])
-            self._vypis("Ve zvolené složce nejsou žádné kusovníky (*.rtf).")
-            self._nastav_stav("Nic k převodu — složka neobsahuje kusovníky.", CERVENA)
+            self._vypis("Z vybraných souborů se nepodařilo načíst žádný prvek.")
+            self._nastav_stav("Nic k převodu.", CERVENA)
             return
 
         radky, ks, m2 = prevod.souhrn_skel(elementy)
@@ -261,7 +328,7 @@ class Okno(tk.Tk):
                 else ".  Zkontroluj červené poznámky v průběhu." if varovani
                 else ".  Všechna skla přepočtena."),
             CERVENA if potize else TMAVA if varovani else ZELENA)
-        self.zalozky.select(0 if varovani else 1)
+        self.zalozky.select(1 if varovani else 2)   # 0 = výběr, 1 = průběh, 2 = souhrn
 
     def _nastav_stav(self, text, barva):
         self.stav.set(text)

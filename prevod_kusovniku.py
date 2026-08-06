@@ -385,11 +385,18 @@ def zapis_seznam_skel(elementy, slozka):
     return celkem_ks, celkem_m2, zamcene
 
 
-def spust(vstup, vystup):
+def najdi_kusovniky(slozka):
+    """Kusovníky ve složce -- bez sestav, přehledů a optimalizací řezu."""
+    return sorted(f for f in glob.glob(os.path.join(slozka, "*.rtf"))
+                  if "usovn" in os.path.basename(f) and "estava" not in os.path.basename(f))
+
+
+def spust(vstup, vystup, soubory=None):
+    """Převede kusovníky ze složky, nebo jen ty vyjmenované v `soubory`."""
     os.makedirs(vystup, exist_ok=True)
     elementy, zprava = [], []
-    soubory = sorted(f for f in glob.glob(os.path.join(vstup, "*.rtf"))
-                     if "usovn" in os.path.basename(f) and "estava" not in os.path.basename(f))
+    ve_slozce = najdi_kusovniky(vstup)
+    soubory = ve_slozce if soubory is None else sorted(soubory)
     zprava.append(f"Corona CT 70 AS  ->  Schüco LivIng MD "
                   f"(rám {RAM_MM}, křídlo {KRIDLO_MM}, T-profil {T_PROFIL_MM}, "
                   f"štulp b={STULP_MM} mm)")
@@ -427,6 +434,9 @@ def spust(vstup, vystup):
                    "skla_objednavka.csv + skla_podrobne.csv"]
     for nazev in zamcene:
         zprava.append(f"POZOR - {nazev} je zamčený (otevřený v jiném programu) - NEZAPSÁN")
+    if len(soubory) < len(ve_slozce):              # CSV nesou jen převedené pozice
+        zprava.append(f"POZOR - převedeno jen {len(soubory)} z {len(ve_slozce)} kusovníků "
+                      "ve složce, CSV proto obsahují jen tyto pozice")
     nedodelky = [el.pozice for el in elementy if any(not s.prepocteno for s in el.skla)]
     if nedodelky:
         zprava.append(f"POZOR - nepřepočteno: pozice {', '.join(nedodelky)}")
