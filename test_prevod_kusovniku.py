@@ -115,6 +115,18 @@ def test_souhrn_skel_scita_shodne_rozmery():
     assert not any(r[-1] for r in radky)         # zadne "overit rucne"
 
 
+def test_optimalizace_prepise_delky_kridel(tmp_path):
+    """Nove rezne delky kridel se prepisou i v optimalizaci prirezu.
+
+    804,5 je v souboru 12x -- 4 ks pozice 1 a 2 ks pozice 1.1, po dvou kusech.
+    """
+    p.spust(ARCHIV, str(tmp_path))
+    text = open(tmp_path / "Optimalizace_přířezu_LivIng_MD.rtf", encoding="latin-1").read()
+    assert text.count(p.ZVYRAZNI_ZAP + "806,0") == 12
+    assert "804,5" not in text
+    assert text.count(p.ZVYRAZNI_ZAP + r"1\'A0151,0") == 12   # 1 149,5 -> 1 151,0
+
+
 def test_najdi_kusovniky():
     """Ve slozce najde jen kusovniky, ne sestavy a prehledy."""
     soubory = [os.path.basename(f) for f in p.najdi_kusovniky(ARCHIV)]
@@ -128,7 +140,7 @@ def test_spust_jen_vybrane_soubory(tmp_path):
     vybrane = p.najdi_kusovniky(ARCHIV)[:1]
     elementy, text = p.spust(ARCHIV, str(tmp_path), vybrane)
     assert len(elementy) == 1
-    hotove = sorted(f.name for f in tmp_path.glob("*.rtf"))
+    hotove = sorted(f.name for f in tmp_path.glob("Kusovník*.rtf"))
     assert hotove == [f"Kusovník_poz{elementy[0].pozice}_LivIng_MD.rtf"]
     # CSV se prepisuji jen vybranymi pozicemi, na to musi report upozornit
     assert "jen 1 z 10" in text
@@ -185,7 +197,7 @@ def test_prevest_zpracuje_jen_vybrane(okno, tmp_path):
     okno.seznam.selection_clear(0, "end")
     okno.seznam.selection_set(1)
     okno.prevest()
-    assert [f.name for f in tmp_path.glob("*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
+    assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
 
 
 def test_domovska_slozka(monkeypatch):

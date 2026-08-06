@@ -6,9 +6,14 @@ se zvýrazněnými hodnotami a vyrobí seznam skel pro objednávku.
 Použití:
     python prevod_kusovniku.py [vstupni_slozka] [vystupni_slozka]
 
-Mění se rozměry skel a řezné délky okenních křídel. Ostatní profily zůstávají
-původní (Corona) -- výztuže, zasklívačky a kování by potřebovaly artiklová data
-LivIng, která v katalogu nejsou. Dveřních křídel se převod nedotýká.
+Mění se rozměry skel a řezné délky okenních křídel, a to i v optimalizaci
+přířezu, je-li ve složce. Ostatní profily zůstávají původní (Corona) --
+výztuže, zasklívačky a kování by potřebovaly artiklová data LivIng, která
+v katalogu nejsou. Dveřních křídel se převod nedotýká.
+
+POZOR: v optimalizaci se přepisují jen délky kusů. Rozvržení po tyčích,
+zbytkové délky ani prořez se nepřepočítávají -- po změně délek je potřeba
+optimalizaci spustit znovu v programu, který ji vyrobil.
 """
 import csv
 import glob
@@ -289,13 +294,8 @@ def prepocti(el):
     return el.skla
 
 
-def zapis_kusovnik(raw, radky, el, cil):
-    """Zapíše kopii kusovníku se zvýrazněnými novými rozměry skel a řezy křídel."""
-    upravy = [(s.radek, ((5, s.sirka_nova), (6, s.vyska_nova)))
-              for s in el.skla if s.prepocteno]
-    upravy += [(k.radek, ((6, k.rez_novy),)) for k in el.kridla
-               if k.prepocteno and k.rez_novy != k.rez]   # shodu nemá smysl zvýrazňovat
-
+def _prepis_bunky(raw, radky, upravy, cil):
+    """Kopie RTF se zvýrazněnými hodnotami. upravy = [(řádek, [(buňka, hodnota)])]."""
     novy = raw
     if "colortbl" not in novy:
         novy = novy.replace(r"{\rtf1 \ansi", r"{\rtf1 \ansi" + BARVY, 1)
@@ -307,7 +307,7 @@ def zapis_kusovnik(raw, radky, el, cil):
         segmenty = re.split(r"(\\cell(?![a-zA-Z]))", novy[zac:kon])
         bunky = segmenty[::2]                       # liché položky jsou oddělovače
         for idx, hodnota in zmeny:
-            m = re.search(r"\\qr\s+(.*?)\s*$", bunky[idx], re.S)
+            m = re.search(r"\\q[lrc]\s+(.*?)\s*$", bunky[idx], re.S)
             if not m:
                 raise ValueError(f"nerozpoznaná buňka: {bunky[idx]!r}")
             prefix = "x " if m.group(1).lstrip().startswith("x") else ""
@@ -316,6 +316,15 @@ def zapis_kusovnik(raw, radky, el, cil):
         segmenty[::2] = bunky
         novy = novy[:zac] + "".join(segmenty) + novy[kon:]
     open(cil, "w", encoding="latin-1").write(novy)
+
+
+def zapis_kusovnik(raw, radky, el, cil):
+    """Zapíše kopii kusovníku se zvýrazněnými novými rozměry skel a řezy křídel."""
+    upravy = [(s.radek, ((5, s.sirka_nova), (6, s.vyska_nova)))
+              for s in el.skla if s.prepocteno]
+    upravy += [(k.radek, ((6, k.rez_novy),)) for k in el.kridla
+               if k.prepocteno and k.rez_novy != k.rez]   # shodu nemá smysl zvýrazňovat
+    _prepis_bunky(raw, radky, upravy, cil)
 
 
 def _des(v, mist=1):
@@ -428,6 +437,41 @@ def spust(vstup, vystup, soubory=None):
             zprava.append(f"    křídlo Fe {fe:<4} {'šířka' if vodorovne else 'výška'}"
                           f" {ks}x  {rez:>7.1f}  ->  {rez_novy:>7.1f}")
         zprava += [f"    ! {p}" for p in el.poznamky]
+
+    optimalizace = [f for f in glob.glob(os.path.join(vstup, "*.rtf"))
+                    if "ptimalizace" in os.path.basename(f)]
+    if optimalizace:
+        # Kus se páruje přes pozici, Fe a orientaci; části -1 a -3 jsou vodorovné
+        # a mají shodnou délku, stejně tak -2 a -4 svislé.
+        nove = {(el.pozice, k.fe, k.vodorovne): k.rez_novy
+                for el in elementy for k in el.kridla
+                if k.prepocteno and k.rez_novy != k.rez}
+        raw = open(optimalizace[0], encoding="latin-1").read()
+        radky = [(m.start(), m.end(),
+                  [_text(c) for c in re.split(r"\\cell(?![a-zA-Z])", m.group(0))[:-1]])
+                 for m in re.finditer(r"\{\\trowd.*?\\row\}", raw, re.S)]
+        upravy = []
+        for i, (_, _, b) in enumerate(radky):
+            if not b or b[0] != "1" or i + 3 >= len(radky):
+                continue                           # řádek délek, pod ním úhly/pozice/popisky
+            pozice, popisky = radky[i + 2][2], radky[i + 3][2]
+            zmeny = []
+            for j in range(1, min(len(b), len(pozice), len(popisky))):
+                if not popisky[j].startswith("Fl "):
+                    continue
+                fe, _, cast = popisky[j][3:].rpartition("-")
+                klic = (pozice[j], fe, int(cast) % 2 == 1)
+                if klic in nove:
+                    zmeny.append((j, nove[klic]))
+            if zmeny:
+                upravy.append((i, zmeny))
+        _prepis_bunky(raw, radky, upravy,
+                      os.path.join(vystup, "Optimalizace_přířezu_LivIng_MD.rtf"))
+        zprava.append(f"\nOptimalizace přířezu: přepsáno "
+                      f"{sum(len(z) for _, z in upravy)} řezných délek křídel "
+                      "-> Optimalizace_přířezu_LivIng_MD.rtf")
+        zprava.append("POZOR - rozvržení kusů po tyčích ani zbytkové délky se "
+                      "nepřepočítaly, optimalizaci je potřeba spustit znovu")
 
     ks, m2, zamcene = zapis_seznam_skel(elementy, vystup)
     zprava += ["", f"Celkem {ks} tabulí, {m2:.3f} m2  ->  "
