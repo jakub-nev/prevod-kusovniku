@@ -191,13 +191,17 @@ def test_vyber_kusovniku_v_okne(okno):
 
 
 def test_okno_ma_zapnuty_drop(okno):
-    """Seznam musi byt registrovany jako cil pro pretazeni souboru."""
+    """Drop musi brat cele okno, ne jen seznam -- soubor lze pustit kamkoliv.
+
+    Pozor: tkdnd::drop_target names vraci Tcl_Obj, ktery je pravdivy i kdyz
+    je prazdny -- registrace se overuje pres <<Drop>> v bind().
+    """
     import prevod_ui
 
     assert prevod_ui.DND_FILES, "tkinterdnd2 chybi, drag & drop by nefungoval"
     assert okno.dnd_aktivni
-    cile = okno.tk.call("tkdnd::drop_target", "names", okno.seznam)
-    assert cile, "seznam nema registrovany drop target"
+    for jmeno, widget in (("okno", okno), ("seznam", okno.seznam)):
+        assert "<<Drop>>" in widget.bind(), f"{jmeno} neprijima drop"
 
 
 def test_drop_souboru_do_okna(okno):

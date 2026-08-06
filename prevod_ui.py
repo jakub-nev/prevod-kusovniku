@@ -89,6 +89,7 @@ class Okno(ZAKLAD_OKNA):
         self.stav = tk.StringVar(value="Vyber kusovníky a stiskni Převést.")
         self.vybrano = tk.StringVar(value="")
         self.soubory = []
+        self.dnd_aktivni = bool(DND_FILES)
 
         ram = ttk.Frame(self, padding=(20, 16, 20, 12))
         ram.pack(fill="both", expand=True)
@@ -104,8 +105,17 @@ class Okno(ZAKLAD_OKNA):
         self.bind("<Return>", lambda _: self.prevest())
         self.bind("<F5>", lambda _: self.prevest())
         self.vstup.trace_add("write", lambda *_: self.nacti_seznam())
+        self._zapni_drop(self)                     # celé okno, ať nezáleží kam se pustí
+        self._zapni_drop(self.seznam)
         self.nacti_seznam()
         self._na_stred()
+
+    def _zapni_drop(self, widget):
+        """Přijme přetažené soubory. Bez tkinterdnd2 nedělá nic."""
+        if not self.dnd_aktivni:
+            return
+        widget.drop_target_register(DND_FILES)
+        widget.dnd_bind("<<Drop>>", lambda udalost: self.pridej_dropnute(udalost.data))
 
     # --- stavba okna ------------------------------------------------------
     def _styly(self):
@@ -192,11 +202,6 @@ class Okno(ZAKLAD_OKNA):
         posuvnik.grid(row=1, column=1, sticky="ns")
         self.seznam.configure(yscrollcommand=posuvnik.set)
         self.seznam.bind("<<ListboxSelect>>", lambda _: self._spocitej_vybrane())
-
-        self.dnd_aktivni = bool(DND_FILES)
-        if self.dnd_aktivni:
-            self.seznam.drop_target_register(DND_FILES)
-            self.seznam.dnd_bind("<<Drop>>", lambda u: self.pridej_dropnute(u.data))
         return ram
 
     def nacti_seznam(self):
