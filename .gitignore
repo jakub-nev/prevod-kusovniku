@@ -1,0 +1,11 @@
+# Zakaznicka data a podklady - do repa nepatri
+Archiv/
+Archiv.zip
+LivIng_MD/
+*.rtf
+*.pdf
+*.csv
+
+__pycache__/
+.pytest_cache/
+.claude/
