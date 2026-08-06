@@ -124,7 +124,8 @@ class Okno(tk.Tk):
                   text=f"Corona CT 70 AS  →  Schüco LivIng MD:  rám {prevod.RAM_MM} mm, "
                        f"křídlo {prevod.KRIDLO_MM} mm, T-profil {prevod.T_PROFIL_MM} mm, "
                        f"štulp b={prevod.STULP_MM} mm.\n"
-                       "Mění se pouze rozměry skel, řezné délky profilů zůstávají původní.").pack(
+                       "Mění se rozměry skel a řezné délky okenních křídel; ostatní "
+                       "profily i dveřní křídla zůstávají původní.").pack(
             anchor="w", pady=(4, 0))
         return ram
 

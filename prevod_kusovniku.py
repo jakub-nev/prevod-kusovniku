@@ -6,8 +6,9 @@ se zvýrazněnými hodnotami a vyrobí seznam skel pro objednávku.
 Použití:
     python prevod_kusovniku.py [vstupni_slozka] [vystupni_slozka]
 
-Mění se POUZE rozměry skel. Řezné délky profilů zůstávají původní (Corona) --
-ty potřebují svarové přídavky LivIng, ne přepočet odpočtových měr.
+Mění se rozměry skel a řezné délky okenních křídel. Ostatní profily zůstávají
+původní (Corona) -- výztuže, zasklívačky a kování by potřebovaly artiklová data
+LivIng, která v katalogu nejsou. Dveřních křídel se převod nedotýká.
 """
 import csv
 import glob
@@ -42,9 +43,12 @@ LIVING = {"kridlo": {"ram": 100.0, "sloupek": 76.0, "stulp": 67.0,
                      # křídlo 83 na dveřním prahu, str. 194: pohledová 88 = mezera 5 + křídlo 83
                      "prah": 68.0},
           "fix": {"ram": 52.0, "sloupek": 28.0, "stulp": 47.0},
-          # dveře: řez Haustür 1:1 (str. 17) x=142; práh 25255500 (str. 116, výška 20 mm),
-          # řez str. 194/195: celková pohledová 130 = mezera 5 + křídlo 125, sklo 130 - 20
-          "dvere": {"ram": 142.0, "prah": 110.0}}
+          # dveře: křídlo 82/125 (19433) v rámu 80 -- tabulka str. 154, řádek
+          # Blendrahmen 80 / a=125: w=47, x=152, tj. sklo 105 pod hranou křídla.
+          # Práh 112 = 105 + mezera 7: katalog mezeru nekótuje, řezy str. 194/195 ji
+          # dávají 5, ale přebírá se Corona 7 (2015 - 1961 - 47 na pozici 8).
+          # Rám 80 platí jen pro dveře, okna jedou na rámu 70 (RAM_MM).
+          "dvere": {"ram": 152.0, "prah": 112.0}}
 
 POPIS = {"kridlo": "křídlo", "fix": "fix", "dvere": "dveře"}
 
@@ -52,8 +56,14 @@ NEOVERENO = "NEPŘEPOČTENO - ověřit ručně"
 SOUHRN_SLOUPCE = ["Typ skla", "Tl. [mm]", "Šířka [mm]", "Výška [mm]", "Kus",
                   "Plocha celkem [m2]", "Pozice", "Poznámka"]
 
-SVAR = 6.0        # svarový přídavek Corona: řezná délka = vnější míra + 6
+SVAR = 6.0        # svarový přídavek: řezná délka = vnější míra + 6 (Corona i LivIng)
 TOLERANCE = 5.0   # větší odchylka kontroly = prvek se nepřepočítává
+
+# Zasunutí skla pod hranu okenního křídla: řezná délka = sklo + 2*zasunutí + SVAR.
+# Corona odvozeno z kusovníků (sedí na všech řádcích profilů křídel),
+# LivIng z katalogu str. 194, kóta 63 u křídla 83.
+# Dveřní křídla se záměrně nepřepočítávají -- zůstávají v původních hodnotách.
+ZASUNUTI = {"corona": 65.0, "living": 63.0}
 
 BARVY = r"{\colortbl ;\red192\green0\blue0;\red255\green255\blue0;}"
 ZVYRAZNI_ZAP, ZVYRAZNI_VYP = r"\cf1\highlight2 ", r" \highlight0\cf0 "
@@ -86,6 +96,16 @@ class Sklo:
 
 
 @dataclass
+class Kridlo:
+    fe: str
+    vodorovne: bool                                # dole/nahoře = šířka, jinak výška
+    rez: float                                     # řezná délka v původním kusovníku
+    radek: int
+    rez_novy: float = 0.0
+    prepocteno: bool = False
+
+
+@dataclass
 class Element:
     soubor: str
     pozice: str = "?"
@@ -98,6 +118,7 @@ class Element:
     prah: bool = False                              # dveřní práh místo spodního rámu
     ram_vyska: float = 0.0                         # vnější výška rámu bez podkladového profilu
     skla: list = field(default_factory=list)
+    kridla: list = field(default_factory=list)     # profily křídla, jeden na stranu
     poznamky: list = field(default_factory=list)
 
 
@@ -149,8 +170,14 @@ def nacti_element(cesta):
             nazev, mira = b[3], b[6]
             if nazev.startswith("Křídlo"):
                 kridla_fe.add(b[5])
+                if mira:
+                    el.kridla.append(Kridlo(fe=b[5], rez=_cislo(mira), radek=i,
+                                            vodorovne="dole" in nazev or "nahoře" in nazev))
             elif nazev.startswith("Dveř"):        # dveřní křídlo má jiné odpočty než okenní
                 dverni_fe.add(b[5])
+                if mira:
+                    el.kridla.append(Kridlo(fe=b[5], rez=_cislo(mira), radek=i,
+                                            vodorovne="dole" in nazev or "nahoře" in nazev))
             elif nazev.startswith("Sloupek"):
                 el.delice.append("sloupek")
             elif nazev.startswith("Stulp.profil"):
@@ -185,6 +212,23 @@ def _sousedi(el, index):
     delic = el.delice[0] if el.delice else "sloupek"
     return ("ram" if index == 0 else delic,
             "ram" if index == len(el.skla) - 1 else delic)
+
+
+def prepocti_kridla(el):
+    """Doplní okenní křídla o nové řezné délky. Corona hodnotu nejdřív ověří."""
+    sklo = {s.fe: s for s in el.skla}
+    for k in el.kridla:
+        s = sklo.get(k.fe)
+        if not s or not s.prepocteno or _rezim(s) != "kridlo":
+            continue                               # dveřních křídel se převod nedotýká
+        stare, nove = (s.sirka, s.sirka_nova) if k.vodorovne else (s.vyska, s.vyska_nova)
+        kontrola = stare + 2 * ZASUNUTI["corona"] + SVAR
+        if abs(kontrola - k.rez) > 0.5:
+            el.poznamky.append(f"Fe {k.fe}: řezná délka křídla {k.rez:.1f} neodpovídá "
+                               f"kontrole {kontrola:.1f} - křídlo nepřepočteno")
+            continue
+        k.rez_novy = round(nove + 2 * ZASUNUTI["living"] + SVAR, 1)
+        k.prepocteno = True
 
 
 def prepocti(el):
@@ -240,22 +284,29 @@ def prepocti(el):
         s.vyska_nova = round(s.vyska + (CORONA[rezim]["ram"] - LIVING[rezim]["ram"])
                              + (CORONA[rezim][dole] - LIVING[rezim][dole]), 1)
         s.prepocteno = True
+
+    prepocti_kridla(el)
     return el.skla
 
 
-def zapis_kusovnik(raw, radky, skla, cil):
-    """Zapíše kopii kusovníku, ve které jsou přepočtené rozměry skel zvýrazněné."""
+def zapis_kusovnik(raw, radky, el, cil):
+    """Zapíše kopii kusovníku se zvýrazněnými novými rozměry skel a řezy křídel."""
+    upravy = [(s.radek, ((5, s.sirka_nova), (6, s.vyska_nova)))
+              for s in el.skla if s.prepocteno]
+    upravy += [(k.radek, ((6, k.rez_novy),)) for k in el.kridla
+               if k.prepocteno and k.rez_novy != k.rez]   # shodu nemá smysl zvýrazňovat
+
     novy = raw
     if "colortbl" not in novy:
         novy = novy.replace(r"{\rtf1 \ansi", r"{\rtf1 \ansi" + BARVY, 1)
     posun = len(novy) - len(raw)
 
-    for s in sorted((s for s in skla if s.prepocteno), key=lambda s: -s.radek):
-        zac, kon, _ = radky[s.radek]
+    for radek, zmeny in sorted(upravy, key=lambda u: -u[0]):
+        zac, kon, _ = radky[radek]
         zac, kon = zac + posun, kon + posun
         segmenty = re.split(r"(\\cell(?![a-zA-Z]))", novy[zac:kon])
         bunky = segmenty[::2]                       # liché položky jsou oddělovače
-        for idx, hodnota in ((5, s.sirka_nova), (6, s.vyska_nova)):
+        for idx, hodnota in zmeny:
             m = re.search(r"\\qr\s+(.*?)\s*$", bunky[idx], re.S)
             if not m:
                 raise ValueError(f"nerozpoznaná buňka: {bunky[idx]!r}")
@@ -349,7 +400,7 @@ def spust(vstup, vystup):
         elementy.append(el)
         cil = os.path.join(vystup, f"Kusovník_poz{el.pozice}_LivIng_MD.rtf")
         try:
-            zapis_kusovnik(raw, radky, el.skla, cil)
+            zapis_kusovnik(raw, radky, el, cil)
         except PermissionError:                    # soubor bývá otevřený ve Wordu
             el.poznamky.append(f"soubor {os.path.basename(cil)} je zamčený (otevřený "
                                "v jiném programu) - NEZAPSÁN, zavři ho a spusť znovu")
@@ -361,6 +412,14 @@ def spust(vstup, vystup):
                      f"   ({POPIS[_rezim(s)]})"
                      if s.prepocteno else "BEZE ZMĚNY")
             zprava.append(f"    Fe {s.fe:<4} {s.sirka:>7.1f} x {s.vyska:>7.1f}  ->  {zmena}")
+        zmeny_kridel = {}                          # dole a nahoře mají stejnou délku
+        for k in el.kridla:
+            if k.prepocteno and k.rez_novy != k.rez:
+                klic = (k.fe, k.vodorovne, k.rez, k.rez_novy)
+                zmeny_kridel[klic] = zmeny_kridel.get(klic, 0) + 1
+        for (fe, vodorovne, rez, rez_novy), ks in zmeny_kridel.items():
+            zprava.append(f"    křídlo Fe {fe:<4} {'šířka' if vodorovne else 'výška'}"
+                          f" {ks}x  {rez:>7.1f}  ->  {rez_novy:>7.1f}")
         zprava += [f"    ! {p}" for p in el.poznamky]
 
     ks, m2, zamcene = zapis_seznam_skel(elementy, vystup)
