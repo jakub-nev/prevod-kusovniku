@@ -204,6 +204,15 @@ def test_okno_ma_zapnuty_drop(okno):
         assert "<<Drop>>" in widget.bind(), f"{jmeno} neprijima drop"
 
 
+def test_drop_ma_vizualni_odezvu(okno):
+    """Pri pretazeni nad okno musi byt videt, ze se soubor prijme."""
+    puvodni = okno.seznam.cget("background")
+    okno._drag_enter()
+    assert okno.seznam.cget("background") != puvodni, "seznam se pri pretazeni nezvyrazni"
+    okno._drag_leave()
+    assert okno.seznam.cget("background") == puvodni, "zvyrazneni po odejeti nezmizelo"
+
+
 def test_drop_souboru_do_okna(okno):
     """Dropnute kusovniky se pridaji do seznamu a oznaci se.
 

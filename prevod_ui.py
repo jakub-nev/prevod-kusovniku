@@ -39,6 +39,7 @@ CERVENA = "#c00000"
 ZELENA = "#1b7f3b"
 BILA = "#ffffff"
 PRUH = "#f4f7fa"         # zebra v tabulce
+PODKLAD_DROPU = "#eaf3fc"  # seznam během přetažení souboru nad oknem
 PODKLAD_LOGU = "#fbfcfd"
 
 PISMO = ("Segoe UI", 9)
@@ -115,7 +116,23 @@ class Okno(ZAKLAD_OKNA):
         if not self.dnd_aktivni:
             return
         widget.drop_target_register(DND_FILES)
-        widget.dnd_bind("<<Drop>>", lambda udalost: self.pridej_dropnute(udalost.data))
+        widget.dnd_bind("<<DropEnter>>", lambda _: self._drag_enter())
+        widget.dnd_bind("<<DropLeave>>", lambda _: self._drag_leave())
+        widget.dnd_bind("<<Drop>>", lambda udalost: self._drop(udalost.data))
+
+    def _drag_enter(self):
+        """Soubor je nad oknem -- ať je vidět, že se přijme."""
+        self.seznam.configure(background=PODKLAD_DROPU, highlightbackground=MODRA,
+                              highlightcolor=MODRA, highlightthickness=2)
+        self.zalozky.select(0)
+
+    def _drag_leave(self):
+        self.seznam.configure(background=BILA, highlightbackground=CARA,
+                              highlightcolor=CARA, highlightthickness=1)
+
+    def _drop(self, data):
+        self._drag_leave()
+        self.pridej_dropnute(data)
 
     # --- stavba okna ------------------------------------------------------
     def _styly(self):
@@ -128,6 +145,7 @@ class Okno(ZAKLAD_OKNA):
         s.configure("Nadpis.TLabel", font=PISMO_NADPIS)
         s.configure("Tlumene.TLabel", foreground=SEDA)
         s.configure("Popisek.TLabel", foreground=SEDA, font=("Segoe UI", 8))
+        s.configure("Drop.TLabel", foreground=MODRA, font=PISMO_TUCNE)
         s.configure("Stav.TLabel", foreground=SEDA)
         s.configure("TNotebook", background=BILA, borderwidth=0)
         s.configure("TNotebook.Tab", font=PISMO, padding=(16, 7))
@@ -188,9 +206,9 @@ class Okno(ZAKLAD_OKNA):
         ttk.Button(lista, text="Zrušit výběr",
                    command=lambda: self._oznac(False)).pack(side="left", padx=8)
         ttk.Label(lista, textvariable=self.vybrano, style="Tlumene.TLabel").pack(side="left")
-        if DND_FILES:
-            ttk.Label(lista, text="kusovníky sem jdou i přetáhnout",
-                      style="Popisek.TLabel").pack(side="right")
+        ttk.Label(lista, style="Drop.TLabel",
+                  text=("⬇  kusovníky sem jdou přetáhnout myší" if DND_FILES
+                        else "⚠ přetahování nedostupné (chybí tkinterdnd2)")).pack(side="right")
 
         self.seznam = tk.Listbox(ram, selectmode="multiple", activestyle="none",
                                  font=STROJOPIS, background=BILA, foreground=TMAVA,
