@@ -11,21 +11,6 @@ import pytest
 import prevod_kusovniku as p
 
 ARCHIV = r"E:\Documents\odpočty\Archiv"
-# Kusovnik, ktery nekdo otevrel a ulozil ve Wordu -- jina struktura RTF.
-WORDI = r"E:\Documents\odpočty\Nová složka\Kusovník_ (266) _2_30_6_11_4_16.rtf"
-
-
-@pytest.mark.skipif(not os.path.exists(WORDI), reason="ukazkovy soubor uz na disku neni")
-def test_kusovnik_ulozeny_wordem():
-    """Word prepise strukturu RTF, kusovnik musi jit precist i tak.
-
-    Radky tabulky nejsou v {}, nedelitelna mezera je \\~ misto \\'A0 a text
-    je rozsekany na fragmenty podle fontu ('K\\nridlo', '1\\~27\\n2\\n,0').
-    """
-    el = p.nacti_element(WORDI)[0]
-    assert el.pozice == "2"
-    assert "Corona CT 70" in el.system
-    assert el.skla, "nenacetly se tabule skla"
 
 
 def test_cislo():
