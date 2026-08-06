@@ -470,8 +470,6 @@ def spust(vstup, vystup, soubory=None):
         zprava.append(f"\nOptimalizace přířezu: přepsáno "
                       f"{sum(len(z) for _, z in upravy)} řezných délek křídel "
                       "-> Optimalizace_přířezu_LivIng_MD.rtf")
-        zprava.append("POZOR - rozvržení kusů po tyčích ani zbytkové délky se "
-                      "nepřepočítaly, optimalizaci je potřeba spustit znovu")
 
     ks, m2, zamcene = zapis_seznam_skel(elementy, vystup)
     zprava += ["", f"Celkem {ks} tabulí, {m2:.3f} m2  ->  "
