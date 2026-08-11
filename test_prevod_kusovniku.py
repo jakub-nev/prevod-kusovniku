@@ -3,7 +3,9 @@
 Spustit:  python test_prevod_kusovniku.py
 """
 import glob
+import json
 import os
+import pathlib
 from types import SimpleNamespace
 
 import pytest
@@ -146,116 +148,9 @@ def test_spust_jen_vybrane_soubory(tmp_path):
     assert "jen 1 z 10" in text
 
 
-def test_otevri_vystup(tmp_path, monkeypatch):
-    """Tlacitko 'Otevrit slozku s vysledky': existujici slozku otevre, jinak jen rekne."""
-    import prevod_ui
 
-    otevrene, hlasky = [], []
-    monkeypatch.setattr(prevod_ui.os, "startfile", otevrene.append, raising=False)
-    monkeypatch.setattr(prevod_ui.messagebox, "showinfo",
-                        lambda *a, **k: hlasky.append(a))
-
-    def okno(cesta):                             # duck-typed self, okno netreba stavet
-        return SimpleNamespace(vystup=SimpleNamespace(get=lambda: cesta))
-
-    prevod_ui.Okno.otevri_vystup(okno(str(tmp_path)))
-    assert otevrene == [str(tmp_path)] and not hlasky
-
-    prevod_ui.Okno.otevri_vystup(okno(str(tmp_path / "neexistuje")))
-    assert otevrene == [str(tmp_path)] and len(hlasky) == 1
-
-
-@pytest.fixture(scope="module")
-def okno():
-    """Jedno okno na vsechny UI testy -- druha tk.Tk() v jednom procesu je krehka."""
-    import prevod_ui
-
-    o = prevod_ui.Okno()
-    o.withdraw()
-    yield o
-    o.destroy()
-
-
-def test_vyber_kusovniku_v_okne(okno):
-    """Okno nabidne kusovniky ze slozky, vsechny predvybrane; vyber jde zuzit."""
-    okno.vstup.set(ARCHIV)                           # zmena slozky seznam prenacte sama
-    assert okno.seznam.size() == 10
-    assert len(okno.vybrane_soubory()) == 10
-
-    okno.seznam.selection_clear(0, "end")
-    okno.seznam.selection_set(2)
-    assert okno.vybrane_soubory() == [okno.soubory[2]]
-    # jmena souboru z Macu jsou rozsypana, seznam proto ukazuje pozici a rozmery
-    assert okno.seznam.get(2).startswith("pozice 2.1")
-    assert "550 × 845 mm" in okno.seznam.get(2)
-
-
-def test_okno_ma_zapnuty_drop(okno):
-    """Drop musi brat cele okno, ne jen seznam -- soubor lze pustit kamkoliv.
-
-    Pozor: tkdnd::drop_target names vraci Tcl_Obj, ktery je pravdivy i kdyz
-    je prazdny -- registrace se overuje pres <<Drop>> v bind().
-    """
-    import prevod_ui
-
-    assert prevod_ui.DND_FILES, "tkinterdnd2 chybi, drag & drop by nefungoval"
-    assert okno.dnd_aktivni
-    for jmeno, widget in (("okno", okno), ("seznam", okno.seznam)):
-        assert "<<Drop>>" in widget.bind(), f"{jmeno} neprijima drop"
-
-
-def test_drop_ma_vizualni_odezvu(okno):
-    """Pri pretazeni nad okno musi byt videt, ze se soubor prijme."""
-    puvodni = okno.seznam.cget("background")
-    okno._drag_enter()
-    assert okno.seznam.cget("background") != puvodni, "seznam se pri pretazeni nezvyrazni"
-    okno._drag_leave()
-    assert okno.seznam.cget("background") == puvodni, "zvyrazneni po odejeti nezmizelo"
-
-
-def test_drop_souboru_do_okna(okno):
-    """Dropnute kusovniky se pridaji do seznamu a oznaci se.
-
-    TkDnD posila cesty oddelene mezerou, ty s mezerou uvnitr ve slozenych
-    zavorkach -- a cesty v Archivu mezery maji.
-    """
-    okno.vstup.set(ARCHIV)
-    okno.seznam.selection_clear(0, "end")
-    vsechny = p.najdi_kusovniky(ARCHIV)
-
-    okno.pridej_dropnute(" ".join("{" + f + "}" for f in vsechny[:2]))
-    assert sorted(okno.vybrane_soubory()) == sorted(vsechny[:2])
-
-    okno.pridej_dropnute("{" + vsechny[5] + "}")     # druhy drop pridava k vyberu
-    assert sorted(okno.vybrane_soubory()) == sorted(vsechny[:2] + [vsechny[5]])
-    assert okno.seznam.size() == 10, "soubory ze slozky se nesmi duplikovat"
-
-
-def test_prevest_dropnute_bez_platneho_vstupu(okno, tmp_path, monkeypatch):
-    """Po spusteni .exe vedle sebe Archiv nebyva -- dropnute soubory musi stacit."""
-    import prevod_ui
-
-    chyby = []
-    monkeypatch.setattr(prevod_ui.messagebox, "showerror",
-                        lambda *a, **k: chyby.append(a))
-    okno.vstup.set(os.path.join(str(tmp_path), "takova-slozka-neni"))
-    assert okno.seznam.size() == 0, "neexistujici slozka nema co nabidnout"
-
-    okno.vystup.set(str(tmp_path))
-    okno.pridej_dropnute("{" + p.najdi_kusovniky(ARCHIV)[1] + "}")
-    okno.prevest()
-    assert not chyby, chyby
-    assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
-
-
-def test_prevest_zpracuje_jen_vybrane(okno, tmp_path):
-    """Tlacitko Prevest bere jen zaskrtnute kusovniky, ne celou slozku."""
-    okno.vstup.set(ARCHIV)
-    okno.vystup.set(str(tmp_path))
-    okno.seznam.selection_clear(0, "end")
-    okno.seznam.selection_set(1)
-    okno.prevest()
-    assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
+# --- okno -----------------------------------------------------------------
+# Vzhled je ve web/, Python drzi jen Api. Testuje se tedy Api, ne widgety.
 
 
 @pytest.fixture(autouse=True)
@@ -266,12 +161,138 @@ def nastaveni_v_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(prevod_ui, "NASTAVENI", str(tmp_path / "rezim"), raising=False)
 
 
+@pytest.fixture
+def api():
+    import prevod_ui
+
+    return prevod_ui.Api()
+
+
+def cti_web(jmeno):
+    return (pathlib.Path(__file__).parent / "web" / jmeno).read_text(encoding="utf-8")
+
+
+def test_seznam_kusovniku(api):
+    """Api nabidne kusovniky ze slozky i s pozici a rozmery."""
+    polozky = api.seznam(ARCHIV)
+    assert len(polozky) == 10
+    assert [x["cesta"] for x in polozky] == p.najdi_kusovniky(ARCHIV)
+    # jmena souboru z Macu jsou rozsypana, seznam proto ukazuje pozici a rozmery
+    poz = {x["pozice"]: x for x in polozky}
+    assert poz["2.1"]["rozmer"] == "550 × 845 mm" and poz["2.1"]["kus"] == 3
+
+
+def test_seznam_neexistujici_slozky(api):
+    """Po rozbaleni programu vedle nej Archiv nebyva -- nesmi to spadnout."""
+    assert api.seznam(os.path.join("takova", "slozka", "neni")) == []
+
+
+def test_drop_souboru(api):
+    """Dropnute kusovniky se pridaji k seznamu a vrati se jako nove oznacene."""
+    api.seznam(ARCHIV)
+    vsechny = p.najdi_kusovniky(ARCHIV)
+
+    odpoved = api.dropnuto(vsechny[:2])
+    assert odpoved["nove"] == vsechny[:2]
+    assert len(odpoved["seznam"]) == 10, "soubory ze slozky se nesmi duplikovat"
+
+
+def test_drop_slozky_prepne_vstup(api):
+    """Pretazena slozka se nastavi jako vstup a nacte se z ni seznam."""
+    odpoved = api.dropnuto([ARCHIV])
+    assert odpoved["vstup"] == os.path.normpath(ARCHIV)
+    assert len(odpoved["seznam"]) == 10
+
+
+def test_drop_jineho_souboru_rekne_proc(api):
+    """Neco jineho nez .rtf ma dat hlasku, ne ticho."""
+    odpoved = api.dropnuto([__file__])
+    assert odpoved["nove"] == [] and "rtf" in odpoved["hlaska"].lower()
+
+
+def test_prevest_jen_vybrane(api, tmp_path):
+    """Prevadi se zaskrtnute kusovniky, ne cela slozka."""
+    vybrane = p.najdi_kusovniky(ARCHIV)[:1]
+    v = api.prevest(ARCHIV, str(tmp_path), vybrane)
+    assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1.1_LivIng_MD.rtf"]
+    assert v["ks"] and v["radky"] and v["klic"] in ("ok", "", "varovna")
+
+
+def test_prevest_bez_vyberu_neprevadi(api, tmp_path):
+    """Bez zaskrtnuteho kusovniku se nic nedeje, jen se to rekne."""
+    v = api.prevest(ARCHIV, str(tmp_path), [])
+    assert v["klic"] == "varovna" and v["zalozka"] == "p-vyber"
+    assert list(tmp_path.glob("*.rtf")) == []
+
+
+def test_prevest_dropnute_bez_platneho_vstupu(api, tmp_path):
+    """Po spusteni .exe vedle sebe Archiv nebyva -- dropnute soubory musi stacit."""
+    api.seznam(str(tmp_path / "takova-slozka-neni"))
+    dropnuty = p.najdi_kusovniky(ARCHIV)[1]
+    api.dropnuto([dropnuty])
+    v = api.prevest(str(tmp_path / "takova-slozka-neni"), str(tmp_path), [dropnuty])
+    assert v["klic"] != "varovna", v["stav"]
+    assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
+
+
+def test_otevri_vystup(api, tmp_path, monkeypatch):
+    """Existujici slozku otevre, jinak jen rekne."""
+    import prevod_ui
+
+    otevrene = []
+    monkeypatch.setattr(prevod_ui.os, "startfile", otevrene.append, raising=False)
+    monkeypatch.setattr(prevod_ui, "MAC", False)
+
+    assert api.otevri(str(tmp_path))["ok"] and otevrene == [str(tmp_path)]
+    v = api.otevri(str(tmp_path / "neexistuje"))
+    assert not v["ok"] and v["hlaska"] and otevrene == [str(tmp_path)]
+
+
+def test_otevri_vystup_na_macu(api, tmp_path, monkeypatch):
+    """Na macOS os.startfile neexistuje, musi se pouzit 'open'."""
+    import prevod_ui
+
+    volane = []
+    monkeypatch.setattr(prevod_ui, "MAC", True)
+    monkeypatch.setattr(prevod_ui.subprocess, "run", lambda a, **k: volane.append(a))
+    api.otevri(str(tmp_path))
+    assert volane and volane[0][0] == "open"
+
+
+def test_drop_dostane_plne_cesty(api):
+    """Prohlizec zna jen jmena souboru; cestu dodava pywebview pres pywebviewFullPath.
+
+    Kdyby se cetlo 'name' misto toho, prevod by dostal cesty bez adresare.
+    """
+    import prevod_ui
+
+    class Udalost:
+        def __init__(self): self.handlery = []
+        def __iadd__(self, h): self.handlery.append(h); return self
+
+    poslane = []
+    udalost = Udalost()
+    okno = SimpleNamespace(
+        dom=SimpleNamespace(document=SimpleNamespace(events=SimpleNamespace(drop=udalost))),
+        evaluate_js=poslane.append)
+    prevod_ui._pripoj_drop(okno, api)
+    assert okno.dom.document.events.drop.handlery, "drop se nikde neregistruje"
+
+    soubor = p.najdi_kusovniky(ARCHIV)[0]
+    okno.dom.document.events.drop.handlery[0].callback(
+        {"dataTransfer": {"files": [{"name": os.path.basename(soubor),
+                                     "pywebviewFullPath": soubor}]}})
+    assert poslane and poslane[0].startswith("window.prijmiDropnute(")
+    odpoved = json.loads(poslane[0][len("window.prijmiDropnute("):-1])
+    assert odpoved["nove"] == [soubor], "do Pythonu nedosla plna cesta"
+    assert api.soubory == [soubor]
+
+
 def test_zapamatovany_rezim(tmp_path):
     """Rezim prezije restart; rozbite nebo nezapisovatelne nastaveni nesmi shodit okno."""
     import prevod_ui
 
     assert not prevod_ui._nacti_tmavy(), "bez souboru se startuje ve svetlem"
-
     prevod_ui._uloz_tmavy(True)
     assert prevod_ui._nacti_tmavy()
     prevod_ui._uloz_tmavy(False)
@@ -286,59 +307,36 @@ def test_zapamatovany_rezim(tmp_path):
     assert not prevod_ui._nacti_tmavy()
 
 
-def test_prepnuti_tmaveho_rezimu(okno):
-    """Prepinac musi prebarvit i klasicke tk widgety -- ty se stylu nedrzi.
-
-    Listbox, Text a vlasove linky si barvu drzi samy, takze po prepnuti
-    zustanou svetle, dokud je nekdo vyslovne neprebarvi.
-    """
+def test_zaklad_nese_rezim_i_odecet(api, monkeypatch):
+    """Stranka dostane pri startu ulozeny rezim, at neblikne svetla a pak tmava."""
     import prevod_ui
 
-    assert not okno.tmavy
-    assert okno.prepinac.cget("text") == "Tmavý režim"
-    assert okno.seznam.cget("background") == prevod_ui.SVETLY["panel"]
-    assert okno.linky, "vlasove linky se nikde neevidují, nejde je prebarvit"
+    prevod_ui._uloz_tmavy(True)
+    z = api.zaklad()
+    assert z["tmavy"] is True
+    assert [x[0] for x in z["odecet"]] == ["RÁM", "KŘÍDLO", "T-PROFIL", "ŠTULP b"]
+    assert [x[1] for x in z["odecet"]] == [p.RAM_MM, p.KRIDLO_MM, p.T_PROFIL_MM, p.STULP_MM]
 
-    okno._prepni_rezim()
-    try:
-        assert okno.tmavy
-        assert okno.prepinac.cget("text") == "Světlý režim"
-        assert prevod_ui.B["panel"] == prevod_ui.TMAVY["panel"]
-        assert okno.seznam.cget("background") == prevod_ui.TMAVY["panel"]
-        assert okno.log.cget("background") == prevod_ui.TMAVY["panel"]
-        assert [c.cget("background") for c in okno.linky] == \
-               [prevod_ui.TMAVY["linka"]] * len(okno.linky)
-    finally:
-        okno._prepni_rezim()                 # paleta je globalni, vratit ji dalsim testum
-    assert okno.seznam.cget("background") == prevod_ui.SVETLY["panel"]
-    assert prevod_ui.B == prevod_ui.SVETLY
+
+def test_ikony_slunce_a_mesic():
+    """Prepinac je slunce/mesic; kazdy rezim ukazuje prave jednu ikonu."""
+    html = cti_web("index.html")
+    assert 'class="mesic"' in html and 'class="slunce"' in html
+    assert 'html[data-rezim="svetly"] .slunce, html[data-rezim="tmavy"] .mesic { display: none; }'         in html, "ikony se neprepinaji podle rezimu"
 
 
 def test_tmavy_rezim_ma_stejne_klice():
-    """Chybejici klic v jedne palete = KeyError az pri prepnuti, ne pri startu."""
-    import prevod_ui
+    """Chybejici promenna v tmave palete = prvek zustane ve svetle barve."""
+    import re
 
-    assert prevod_ui.SVETLY.keys() == prevod_ui.TMAVY.keys()
+    html = cti_web("index.html")
+    def klice(vzor):
+        blok = re.search(vzor, html, re.S).group(1)
+        return set(re.findall(r"(--[a-z0-9-]+)\s*:", blok))
 
-
-def test_domovska_slozka(monkeypatch):
-    """V zabalenem .exe musi vychozi cesty mirit vedle .exe, ne do temp adresare."""
-    import prevod_ui
-
-    slozka = os.path.abspath(os.path.join(os.sep, "appky", "prevod"))
-    monkeypatch.setattr(prevod_ui.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(prevod_ui.sys, "executable", os.path.join(slozka, "prevod.exe"))
-    assert prevod_ui.domovska_slozka() == slozka
-
-    monkeypatch.delattr(prevod_ui.sys, "frozen")
-    assert prevod_ui.domovska_slozka() == os.path.dirname(os.path.abspath(prevod_ui.__file__))
-
-
-if __name__ == "__main__":
-    for jmeno, fn in sorted(globals().items()):
-        if jmeno.startswith("test_"):
-            fn()
-            print("OK  ", jmeno)
-
-
-
+    svetla = klice(r":root \{(.*?)\}")
+    tmava = klice(r'html\[data-rezim="tmavy"\] \{(.*?)\}')
+    assert tmava, "tmava paleta chybi"
+    assert tmava <= svetla, f"tmava definuje navic: {tmava - svetla}"
+    barvy = {k for k in svetla if not k.startswith(("--okraj", "--mira", "--sloupec", "--tracking"))}
+    assert barvy == tmava, f"tmave chybi: {barvy - tmava}"

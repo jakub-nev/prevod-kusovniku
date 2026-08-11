@@ -15,11 +15,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install pyinstaller tkinterdnd2
-      - run: pyinstaller --noconfirm --onefile --windowed --name "Prevod kusovniku" prevod_ui.py
-      - name: Kontrola, ze se pribalil drag & drop
-        shell: bash
-        run: grep -qa tkdnd "dist/Prevod kusovniku.exe" || (echo "tkinterdnd2 chybi v .exe"; exit 1)
+      - run: pip install pyinstaller pywebview
+      - run: pyinstaller --noconfirm --onefile --windowed --name "Prevod kusovniku" --add-data "web;web" --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module qtpy --exclude-module gi --exclude-module numpy --exclude-module cefpython3 prevod_ui.py
+      - name: Kontrola, ze se web zabalil do binarky
+        run: '& "dist/Prevod kusovniku.exe" --kontrola'
       - uses: actions/upload-artifact@v4
         with:
           name: prevod-kusovniku-windows
@@ -32,12 +31,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install pyinstaller tkinterdnd2
-      - run: pyinstaller --noconfirm --windowed --name "Prevod kusovniku" prevod_ui.py
+      - run: pip install pyinstaller pywebview
+      - run: pyinstaller --noconfirm --windowed --name "Prevod kusovniku" --add-data "web:web" --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module qtpy --exclude-module gi --exclude-module numpy --exclude-module cefpython3 prevod_ui.py
       - name: Kontrola architektury
         run: |
           file "dist/Prevod kusovniku.app/Contents/MacOS/Prevod kusovniku"
           file "dist/Prevod kusovniku.app/Contents/MacOS/Prevod kusovniku" | grep -q x86_64
+      - name: Kontrola, ze se web zabalil do binarky
+        run: '"dist/Prevod kusovniku.app/Contents/MacOS/Prevod kusovniku" --kontrola'
       - name: Zabalit .app
         run: ditto -c -k --keepParent "dist/Prevod kusovniku.app" "Prevod kusovniku-mac-intel.zip"
       - uses: actions/upload-artifact@v4

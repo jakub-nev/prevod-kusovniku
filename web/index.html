@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="cs" data-rezim="svetly">
+<head>
+<meta charset="utf-8">
+<title>Převod kusovníků</title>
+<style>
+/* Paleta zmerena na schueco.com. Stranka je bila, seda jsou bloky sekci --
+   ne naopak; to je zaklad jejich vzhledu. Zelena patri jen odkazum. */
+:root {
+  --text:    #262626;
+  --text-2:  #666666;
+  --text-3:  #8c8c8c;
+  --line:    #e6e6e6;
+  --line-2:  #d9d9d9;
+  --page:    #ffffff;
+  --block:   #f2f2f2;
+  --block-2: #e6e6e6;
+  --green:   #4c840d;
+  --green-2: #3d6a0a;
+  --warn:    #a8342a;
+  --na-zelene: #ffffff;
+
+  --okraj: 44px;          /* siroke okraje jako na webu vyrobce */
+  --mira: 1010px;         /* omezena mira obsahu, at pole nerostou donekonecna */
+  --sloupec: 132px;       /* leva sloupec s popisky */
+  --tracking: 0.065em;    /* 1.04px na 16px, zmereno na tlacitkach Schuco */
+}
+html[data-rezim="tmavy"] {
+  --text:    #f2f2f2;
+  --text-2:  #a6a6a6;
+  --text-3:  #8c8c8c;
+  --line:    #333333;
+  --line-2:  #3d3d3d;
+  --page:    #1a1a1a;
+  --block:   #232323;
+  --block-2: #2b2b2b;
+  --green:   #8cc63f;
+  --green-2: #a0d454;
+  --warn:    #e08a7e;
+  --na-zelene: #1a1a1a;   /* svetla zelena unese jen tmavy text */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+body {
+  background: var(--page);
+  color: var(--text);
+  font: 400 14px/1.5 Univers, "Univers LT Std", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+button, input { font: inherit; color: inherit; }
+
+/* ---------- zahlavi ---------- */
+.zahlavi { flex: 0 0 auto; border-bottom: 2px solid var(--green); }
+.zahlavi .stred { display: flex; align-items: center; justify-content: space-between; height: 52px; }
+.znacka { font-weight: 700; font-size: 15px; letter-spacing: var(--tracking); text-transform: uppercase; }
+.znacka span { color: var(--text-3); font-weight: 400; margin-left: 14px; text-transform: none; letter-spacing: 0; }
+
+.rezim {
+  width: 40px; height: 40px; border: 0; background: none; cursor: pointer;
+  display: grid; place-items: center; color: var(--text);
+}
+.rezim:hover { color: var(--green); }
+.rezim:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.rezim svg { width: 20px; height: 20px; display: block; }
+html[data-rezim="svetly"] .slunce, html[data-rezim="tmavy"] .mesic { display: none; }
+
+/* ---------- obsah ---------- */
+/* Mira obsahu je omezena a vycentrovana, okolo siroke okraje -- rozvrh Schuco. */
+.stred { width: 100%; max-width: var(--mira); margin: 0 auto; padding: 0 var(--okraj); }
+.obsah { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.obsah > * { flex: 0 0 auto; }
+.telo { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: 18px; }
+.pas { background: var(--block); margin-bottom: 20px; }
+
+.hero { padding: 22px 0 18px; }
+.hero h1 {
+  font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em;
+  display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+}
+.hero h1 .sipka { color: var(--green); font-weight: 400; }
+.hero p { color: var(--text-2); margin-top: 8px; max-width: 74ch; }
+
+/* sedy blok = sekce, presne jako bloky na schueco.com */
+.odecet { display: flex; flex-wrap: wrap; padding: 14px 0; }
+.odecet div { padding: 0 40px; border-left: 1px solid var(--line-2); }
+.odecet div:first-child { border-left: 0; padding-left: 0; }
+.odecet dt {
+  font-size: 11px; letter-spacing: var(--tracking);
+  color: var(--text-2); margin-bottom: 5px;
+}
+.odecet dd { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;
+             color: var(--green); }
+.odecet dd i { font-style: normal; font-size: 13px; font-weight: 400; color: var(--text-2); margin-left: 4px; }
+
+/* dvousloupcovy rozvrh popisek | obsah */
+.radek { display: grid; grid-template-columns: var(--sloupec) 1fr auto; align-items: center;
+         gap: 0 24px; margin-bottom: 8px; }
+.radek label { color: var(--text-2); }
+.radek input {
+  width: 100%; padding: 9px 13px; background: var(--page); color: var(--text);
+  border: 1px solid var(--line-2); border-radius: 0;
+  font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 13px;
+}
+.radek input:focus { outline: 0; border-color: var(--green); }
+
+.akce { display: grid; grid-template-columns: var(--sloupec) 1fr; gap: 0 24px; margin: 14px 0 20px; }
+.akce > div { display: flex; align-items: center; gap: 12px; }
+.napoveda { color: var(--text-3); font-size: 12px; margin-left: 4px; }
+
+/* tlacitka: 2px obrys, ostre rohy, prostrkani -- presne jako "Learn more" */
+button.tl {
+  padding: 9px 24px; background: none; color: var(--text);
+  border: 2px solid var(--text); border-radius: 0; cursor: pointer;
+  font-weight: 700; letter-spacing: var(--tracking);
+  transition: background .12s linear, color .12s linear, border-color .12s linear;
+}
+button.tl:hover { border-color: var(--green); color: var(--green); }
+button.tl.plne { background: var(--green); border-color: var(--green); color: var(--na-zelene); }
+button.tl.plne:hover { background: var(--green-2); border-color: var(--green-2); }
+button.tl:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+button.tl.male { padding: 7px 16px; font-size: 12px; border-width: 1px; }
+
+/* ---------- zalozky ---------- */
+.zalozky { display: flex; gap: 34px; border-bottom: 1px solid var(--line); }
+.zalozky button {
+  background: none; border: 0; cursor: pointer; padding: 0 0 12px;
+  color: var(--text-2); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.zalozky button:hover { color: var(--text); }
+.zalozky button[aria-selected="true"] { color: var(--text); font-weight: 700; border-bottom-color: var(--green); }
+.zalozky button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
+.panel { display: none; padding-top: 16px; min-height: 0; }
+.panel.aktivni { display: flex; flex-direction: column; flex: 1 1 auto; }
+
+.lista { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.lista .pocet { color: var(--text-2); font-size: 13px; }
+.lista .tip { margin-left: auto; color: var(--text-3); font-size: 12px; }
+
+/* ---------- seznam kusovniku ---------- */
+.seznam { border: 1px solid var(--line); flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.seznam .polozka {
+  display: flex; align-items: center; gap: 14px; padding: 7px 16px; cursor: pointer;
+  border-bottom: 1px solid var(--line);
+  font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 13px;
+}
+.seznam .polozka:last-child { border-bottom: 0; }
+.seznam .polozka { border-left: 3px solid transparent; }
+.seznam .polozka:hover { background: var(--block); }
+.seznam .polozka[aria-selected="true"] { border-left-color: var(--green); }
+.seznam .polozka .box {
+  width: 15px; height: 15px; flex: 0 0 auto; border: 1px solid var(--line-2);
+  display: grid; place-items: center;
+}
+.seznam .polozka[aria-selected="true"] .box { background: var(--green); border-color: var(--green); }
+.seznam .polozka .box svg { width: 11px; height: 11px; stroke: var(--na-zelene); display: none; }
+.seznam .polozka[aria-selected="true"] .box svg { display: block; }
+.seznam .polozka .rozmer { color: var(--text-2); }
+
+body.pretahuje .seznam { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+body.pretahuje .seznam::before {
+  content: "Pusťte kusovníky sem"; display: block; padding: 14px 16px;
+  color: var(--green); font-weight: 700; letter-spacing: var(--tracking);
+}
+
+/* ---------- prubeh a souhrn ---------- */
+.log {
+  border: 1px solid var(--line); background: var(--page); padding: 16px 20px;
+  flex: 1 1 auto; min-height: 0; overflow: auto; white-space: pre;
+  font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 13px; line-height: 1.65;
+  user-select: text; cursor: text;
+}
+.log .pozice { color: var(--green); font-weight: 700; display: block; margin-top: 14px; }
+.log .varovani { color: var(--warn); }
+.log .souhrn { font-weight: 700; display: block; margin-top: 14px; }
+
+table { width: 100%; border-collapse: collapse; font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--page);
+  text-align: left; font-family: Univers, "Helvetica Neue", Arial, sans-serif;
+  font-size: 11px; font-weight: 400; letter-spacing: var(--tracking); text-transform: uppercase;
+  color: var(--text-2); padding: 0 12px 10px; border-bottom: 2px solid var(--green); white-space: nowrap;
+}
+tbody td { padding: 9px 12px; border-bottom: 1px solid var(--line); }
+tbody tr:nth-child(even) { background: var(--block); }
+tbody tr.overit td { color: var(--warn); }
+tfoot td { position: sticky; bottom: 0; padding: 11px 12px; font-weight: 700;
+           background: var(--block-2); color: var(--green-2);
+           border-top: 2px solid var(--green); }
+.cislo { text-align: right; font-variant-numeric: tabular-nums; }
+.rolovatelne { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.prazdno { color: var(--text-2); padding: 48px 0; text-align: center; }
+
+/* ---------- stav ---------- */
+.stav { flex: 0 0 auto; border-top: 1px solid var(--line); font-size: 13px; }
+.stav .stred { display: flex; align-items: center; gap: 10px; padding-top: 14px; padding-bottom: 14px; }
+.stav .tecka { width: 8px; height: 8px; flex: 0 0 auto; background: var(--text-3); }
+.stav.ok .tecka { background: var(--green); }
+.stav.varovna .tecka { background: var(--warn); }
+.stav.varovna .text { color: var(--warn); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-2); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<header class="zahlavi"><div class="stred">
+  <div class="znacka">Převod kusovníků</div>
+  <button class="rezim" id="rezim" title="Přepnout světlý/tmavý režim" aria-label="Přepnout světlý a tmavý režim">
+    <svg class="mesic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M21 13.2A9 9 0 1 1 10.8 3a7.2 7.2 0 0 0 10.2 10.2z"/>
+    </svg>
+    <svg class="slunce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none"/>
+      <path d="M12 2.4v2.6M12 19v2.6M4.2 12H1.6M22.4 12h-2.6M6.5 6.5 4.6 4.6M19.4 19.4l-1.9-1.9M17.5 6.5l1.9-1.9M4.6 19.4l1.9-1.9"/>
+    </svg>
+  </button>
+</div></header>
+
+<main class="obsah">
+  <div class="stred"><section class="hero">
+    <h1>Corona CT 70 AS <span class="sipka">→</span> Schüco LivIng MD</h1>
+    <p>Mění se rozměry skel a řezné délky okenních křídel. Ostatní profily i dveřní křídla
+       zůstávají původní.</p>
+  </section></div>
+
+  <div class="pas"><div class="stred"><dl class="odecet" id="odecet"></dl></div></div>
+
+  <div class="stred telo">
+  <div class="radek">
+    <label for="vstup">Kusovníky</label>
+    <input id="vstup" spellcheck="false">
+    <button class="tl male" data-prochazet="vstup">Procházet…</button>
+  </div>
+  <div class="radek">
+    <label for="vystup">Výstup</label>
+    <input id="vystup" spellcheck="false">
+    <button class="tl male" data-prochazet="vystup">Procházet…</button>
+  </div>
+
+  <div class="akce">
+    <div></div>
+    <div>
+      <button class="tl plne" id="prevest">Převést</button>
+      <button class="tl" id="otevrit">Otevřít složku s výsledky</button>
+      <span class="napoveda">Enter / F5</span>
+    </div>
+  </div>
+
+  <div class="zalozky" role="tablist">
+    <button role="tab" aria-selected="true"  data-panel="p-vyber">Kusovníky</button>
+    <button role="tab" aria-selected="false" data-panel="p-prubeh">Průběh převodu</button>
+    <button role="tab" aria-selected="false" data-panel="p-souhrn">Souhrn skel</button>
+  </div>
+
+  <section class="panel aktivni" id="p-vyber">
+    <div class="lista">
+      <button class="tl male" id="vse">Vybrat vše</button>
+      <button class="tl male" id="nic">Zrušit výběr</button>
+      <span class="pocet" id="pocet"></span>
+      <span class="tip">kusovníky sem jdou přetáhnout myší</span>
+    </div>
+    <div class="seznam" id="seznam"></div>
+  </section>
+
+  <section class="panel" id="p-prubeh">
+    <div class="log" id="log">Zatím nic nepřevedeno.</div>
+  </section>
+
+  <section class="panel" id="p-souhrn">
+    <div id="souhrn" class="rolovatelne"><p class="prazdno">Zatím není co objednávat — spusťte Převést.</p></div>
+  </section>
+  </div>
+</main>
+
+<footer class="stav" id="stav"><div class="stred">
+  <span class="tecka"></span>
+  <span class="text" id="stav-text">Vyberte kusovníky a stiskněte Převést.</span>
+</div></footer>
+
+<script src="app.js"></script>
+</body>
+</html>
