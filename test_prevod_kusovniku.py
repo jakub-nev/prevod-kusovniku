@@ -258,6 +258,69 @@ def test_prevest_zpracuje_jen_vybrane(okno, tmp_path):
     assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1_LivIng_MD.rtf"]
 
 
+@pytest.fixture(autouse=True)
+def nastaveni_v_tmp(tmp_path, monkeypatch):
+    """Zadny test nesmi prepsat skutecne ulozeny rezim uzivatele."""
+    import prevod_ui
+
+    monkeypatch.setattr(prevod_ui, "NASTAVENI", str(tmp_path / "rezim"), raising=False)
+
+
+def test_zapamatovany_rezim(tmp_path):
+    """Rezim prezije restart; rozbite nebo nezapisovatelne nastaveni nesmi shodit okno."""
+    import prevod_ui
+
+    assert not prevod_ui._nacti_tmavy(), "bez souboru se startuje ve svetlem"
+
+    prevod_ui._uloz_tmavy(True)
+    assert prevod_ui._nacti_tmavy()
+    prevod_ui._uloz_tmavy(False)
+    assert not prevod_ui._nacti_tmavy()
+
+    with open(prevod_ui.NASTAVENI, "w", encoding="utf-8") as f:
+        f.write("nesmysl")
+    assert not prevod_ui._nacti_tmavy(), "necekany obsah = svetly, ne vyjimka"
+
+    prevod_ui.NASTAVENI = str(tmp_path / "neni" / "takova" / "slozka")
+    prevod_ui._uloz_tmavy(True)                  # nezapisovatelna cesta se jen spolkne
+    assert not prevod_ui._nacti_tmavy()
+
+
+def test_prepnuti_tmaveho_rezimu(okno):
+    """Prepinac musi prebarvit i klasicke tk widgety -- ty se stylu nedrzi.
+
+    Listbox, Text a vlasove linky si barvu drzi samy, takze po prepnuti
+    zustanou svetle, dokud je nekdo vyslovne neprebarvi.
+    """
+    import prevod_ui
+
+    assert not okno.tmavy
+    assert okno.prepinac.cget("text") == "Tmavý režim"
+    assert okno.seznam.cget("background") == prevod_ui.SVETLY["panel"]
+    assert okno.linky, "vlasove linky se nikde neevidují, nejde je prebarvit"
+
+    okno._prepni_rezim()
+    try:
+        assert okno.tmavy
+        assert okno.prepinac.cget("text") == "Světlý režim"
+        assert prevod_ui.B["panel"] == prevod_ui.TMAVY["panel"]
+        assert okno.seznam.cget("background") == prevod_ui.TMAVY["panel"]
+        assert okno.log.cget("background") == prevod_ui.TMAVY["panel"]
+        assert [c.cget("background") for c in okno.linky] == \
+               [prevod_ui.TMAVY["linka"]] * len(okno.linky)
+    finally:
+        okno._prepni_rezim()                 # paleta je globalni, vratit ji dalsim testum
+    assert okno.seznam.cget("background") == prevod_ui.SVETLY["panel"]
+    assert prevod_ui.B == prevod_ui.SVETLY
+
+
+def test_tmavy_rezim_ma_stejne_klice():
+    """Chybejici klic v jedne palete = KeyError az pri prepnuti, ne pri startu."""
+    import prevod_ui
+
+    assert prevod_ui.SVETLY.keys() == prevod_ui.TMAVY.keys()
+
+
 def test_domovska_slozka(monkeypatch):
     """V zabalenem .exe musi vychozi cesty mirit vedle .exe, ne do temp adresare."""
     import prevod_ui
