@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install pyinstaller pywebview
-      - run: pyinstaller --noconfirm --onefile --windowed --name "Prevod kusovniku" --add-data "web;web" --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module qtpy --exclude-module gi --exclude-module numpy --exclude-module cefpython3 prevod_ui.py
+      - run: pyinstaller --noconfirm --onefile --windowed --name "Prevod kusovniku" --icon ikona.ico --add-data "web;web" --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module qtpy --exclude-module gi --exclude-module numpy --exclude-module cefpython3 prevod_ui.py
       - name: Kontrola, ze se web zabalil do binarky
         run: '& "dist/Prevod kusovniku.exe" --kontrola'
       - uses: actions/upload-artifact@v4
@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install pyinstaller pywebview
-      - run: pyinstaller --noconfirm --windowed --name "Prevod kusovniku" --add-data "web:web" --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module qtpy --exclude-module gi --exclude-module numpy --exclude-module cefpython3 prevod_ui.py
+      - run: pyinstaller --noconfirm --windowed --name "Prevod kusovniku" --icon ikona.icns --add-data "web:web" --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module qtpy --exclude-module gi --exclude-module numpy --exclude-module cefpython3 prevod_ui.py
       - name: Kontrola architektury
         run: |
           file "dist/Prevod kusovniku.app/Contents/MacOS/Prevod kusovniku"

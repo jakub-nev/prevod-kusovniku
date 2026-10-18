@@ -185,7 +185,9 @@ def main():
         background_color="#ffffff")
     # Výchozí private_mode: vlastní port a profil. S private_mode=False sdílí všechny
     # pywebview aplikace port 42001 i %APPDATA%\pywebview a otevírala se cizí stránka.
-    webview.start(lambda: _pripoj_drop(okno, api))
+    # Ze zdrojaku ikona okna; v .exe soubor chybi a pywebview vezme ikonu binarky.
+    ikona = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ikona.ico")
+    webview.start(lambda: _pripoj_drop(okno, api), icon=ikona)
 
 
 if __name__ == "__main__":

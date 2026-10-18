@@ -13,7 +13,8 @@ const api = () => window.pywebview.api;
 
 const MOCK = {
   zaklad: {
-    vstup: "E:\\Documents\\odpočty\\Archiv", vystup: "E:\\Documents\\odpočty\\LivIng_MD",
+    vstup: "E:\\Documents\\GitHub\\prevod-kusovniku\\Archiv",
+    vystup: "E:\\Documents\\GitHub\\prevod-kusovniku\\LivIng_MD",
     tmavy: false,
     odecet: [["RÁM", 70], ["KŘÍDLO", 83], ["T-PROFIL", 92], ["ŠTULP b", 74]],
   },

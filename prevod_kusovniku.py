@@ -489,8 +489,9 @@ def spust(vstup, vystup, soubory=None):
 
 
 if __name__ == "__main__":
-    print(spust(sys.argv[1] if len(sys.argv) > 1 else r"E:\Documents\odpočty\Archiv",
-                sys.argv[2] if len(sys.argv) > 2 else r"E:\Documents\odpočty\LivIng_MD")[1])
+    zde = os.path.dirname(os.path.abspath(__file__))
+    print(spust(sys.argv[1] if len(sys.argv) > 1 else os.path.join(zde, "Archiv"),
+                sys.argv[2] if len(sys.argv) > 2 else os.path.join(zde, "LivIng_MD"))[1])
 
 
 

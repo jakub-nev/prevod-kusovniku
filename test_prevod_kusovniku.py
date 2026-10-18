@@ -12,7 +12,7 @@ import pytest
 
 import prevod_kusovniku as p
 
-ARCHIV = r"E:\Documents\odpočty\Archiv"
+ARCHIV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Archiv")
 
 
 def test_cislo():
