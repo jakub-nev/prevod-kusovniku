@@ -183,7 +183,9 @@ def main():
         os.path.join(slozka_webu(), "index.html"),
         js_api=api, width=1080, height=830, min_size=(900, 620),
         background_color="#ffffff")
-    webview.start(lambda: _pripoj_drop(okno, api), private_mode=False)
+    # Výchozí private_mode: vlastní port a profil. S private_mode=False sdílí všechny
+    # pywebview aplikace port 42001 i %APPDATA%\pywebview a otevírala se cizí stránka.
+    webview.start(lambda: _pripoj_drop(okno, api))
 
 
 if __name__ == "__main__":
