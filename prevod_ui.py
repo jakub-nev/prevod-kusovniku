@@ -113,7 +113,7 @@ class Api:
         return {"seznam": [popis(c) for c in self.soubory], "nove": nove}
 
     # --- převod ----------------------------------------------------------
-    def prevest(self, vstup, vystup, vybrane):
+    def prevest(self, vstup, vystup, vybrane, corona=()):
         if not vybrane:                            # rozhoduje výběr, ne vstupní složka
             if not os.path.isdir(vstup):
                 return {"stav": f"Složka s kusovníky neexistuje: {vstup}", "klic": "varovna",
@@ -121,7 +121,7 @@ class Api:
             return {"stav": "Nic není vybráno — zaškrtněte kusovníky v záložce Kusovníky.",
                     "klic": "varovna", "zalozka": "p-vyber"}
         try:
-            elementy, text = prevod.spust(vstup, vystup, list(vybrane))
+            elementy, text = prevod.spust(vstup, vystup, list(vybrane), corona)
         except Exception as chyba:
             return {"log": f"CHYBA: {chyba}", "stav": "Převod selhal.", "klic": "varovna",
                     "zalozka": "p-prubeh"}
@@ -132,9 +132,11 @@ class Api:
                     "stav": "Nic k převodu.", "klic": "varovna", "zalozka": "p-prubeh"}
 
         radky, ks, m2 = prevod.souhrn_skel(elementy)
-        potize = sum(1 for el in elementy for s in el.skla if not s.prepocteno)
+        potize = sum(1 for el in elementy if not el.corona for s in el.skla if not s.prepocteno)
         varovani = potize or any(el.poznamky for el in elementy)
-        stav = (f"Hotovo — {len(elementy)} pozic, {ks} tabulí, "
+        v_corone = sum(el.corona for el in elementy)
+        stav = (f"Hotovo — {len(elementy)} pozic"
+                f"{f' ({v_corone} v Coroně)' if v_corone else ''}, {ks} tabulí, "
                 f"{m2:.3f} m²".replace(".", ",") + (
                     f".  POZOR: {potize} tabulí nepřepočteno (viz červené řádky)." if potize
                     else ".  Zkontrolujte červené poznámky v průběhu." if varovani

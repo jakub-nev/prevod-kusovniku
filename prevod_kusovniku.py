@@ -125,6 +125,7 @@ class Element:
     skla: list = field(default_factory=list)
     kridla: list = field(default_factory=list)     # profily křídla, jeden na stranu
     poznamky: list = field(default_factory=list)
+    corona: bool = False                           # v okně ponecháno v Coroně, nepřevádí se
 
 
 def _text(seg):
@@ -344,20 +345,21 @@ def souhrn_skel(elementy):
     for el in elementy:
         for s in el.skla:
             sir, vys = _rozmery(s)
-            klic = (s.typ_skla, s.tloustka, round(sir, 1), round(vys, 1))
+            klic = (s.typ_skla, s.tloustka, round(sir, 1), round(vys, 1), el.corona)
             polozka = souhrn.setdefault(klic, {"kus": 0, "pozice": [], "overit": False})
             polozka["kus"] += s.kus
-            polozka["overit"] |= not s.prepocteno
+            polozka["overit"] |= not s.prepocteno and not el.corona
             if el.pozice not in polozka["pozice"]:
                 polozka["pozice"].append(el.pozice)
 
     radky, celkem_ks, celkem_m2 = [], 0, 0.0
-    for (typ, tl, sir, vys), v in sorted(souhrn.items(), key=lambda x: (-x[0][2], -x[0][3])):
+    for (typ, tl, sir, vys, corona), v in sorted(souhrn.items(), key=lambda x: (-x[0][2], -x[0][3])):
         plocha = sir * vys / 1e6 * v["kus"]
         celkem_ks += v["kus"]
         celkem_m2 += plocha
         radky.append([typ, tl, _des(sir), _des(vys), v["kus"], _des(plocha, 3),
-                      ", ".join(v["pozice"]), NEOVERENO if v["overit"] else ""])
+                      ", ".join(v["pozice"]),
+                      NEOVERENO if v["overit"] else "Corona" if corona else ""])
     return radky, celkem_ks, celkem_m2
 
 
@@ -371,7 +373,7 @@ def zapis_seznam_skel(elementy, slozka):
             podrobne.append([el.pozice, s.fe, s.typ_skla, s.tloustka,
                              _des(sir), _des(vys), s.kus, _des(plocha, 3),
                              _des(plocha * s.kus, 3),
-                             "" if s.prepocteno else NEOVERENO])
+                             "" if s.prepocteno else "Corona" if el.corona else NEOVERENO])
 
     zamcene = []
 
@@ -400,8 +402,13 @@ def najdi_kusovniky(slozka):
                   if "usovn" in os.path.basename(f) and "estava" not in os.path.basename(f))
 
 
-def spust(vstup, vystup, soubory=None):
-    """Převede kusovníky ze složky, nebo jen ty vyjmenované v `soubory`."""
+def spust(vstup, vystup, soubory=None, corona=()):
+    """Převede kusovníky ze složky, nebo jen ty vyjmenované v `soubory`.
+
+    Kusovníky v `corona` se nepřevádí: zkopírují se a jejich skla jdou do objednávky
+    v původních rozměrech.
+    """
+    corona = {os.path.normpath(c) for c in corona}
     os.makedirs(vystup, exist_ok=True)
     elementy, zprava = [], []
     ve_slozce = najdi_kusovniky(vstup)
@@ -410,11 +417,21 @@ def spust(vstup, vystup, soubory=None):
                   f"(rám {RAM_MM}, křídlo {KRIDLO_MM}, T-profil {T_PROFIL_MM}, "
                   f"štulp b={STULP_MM} mm)")
     zprava.append("")
+    necitelne = []
     for cesta in soubory:
         el, raw, radky = nacti_element(cesta)
-        prepocti(el)
         elementy.append(el)
-        cil = os.path.join(vystup, f"Kusovník_poz{el.pozice}_LivIng_MD.rtf")
+        if el.pozice == "?":                       # Word při uložení přepíše tabulky
+            necitelne.append(os.path.basename(cesta))
+            el.poznamky.append("NEPŘEČTEN - není to kusovník přímo ze SchuCalu (uložený "
+                               "ve Wordu?), vyexportujte ho ze SchuCalu znovu")
+            zprava += [f"Soubor {necitelne[-1]}", f"    ! {el.poznamky[-1]}"]
+            continue
+        el.corona = os.path.normpath(cesta) in corona
+        if not el.corona:
+            prepocti(el)
+        cil = os.path.join(vystup, f"Kusovník_poz{el.pozice}_"
+                                   f"{'Corona' if el.corona else 'LivIng_MD'}.rtf")
         try:
             zapis_kusovnik(raw, radky, el, cil)
         except PermissionError:                    # soubor bývá otevřený ve Wordu
@@ -423,6 +440,8 @@ def spust(vstup, vystup, soubory=None):
 
         zprava.append(f"Pozice {el.pozice}  ({el.kus} ks, {el.sirka:.0f} x {el.vyska:.0f} mm)"
                       f"  ->  {os.path.basename(cil)}")
+        if el.corona:
+            zprava.append("    zůstává Corona CT 70 AS, nepřevádí se")
         for s in el.skla:
             zmena = (f"{s.sirka_nova:>7.1f} x {s.vyska_nova:>7.1f}"
                      f"   ({POPIS[_rezim(s)]})"
@@ -479,9 +498,12 @@ def spust(vstup, vystup, soubory=None):
     if len(soubory) < len(ve_slozce):              # CSV nesou jen převedené pozice
         zprava.append(f"POZOR - převedeno jen {len(soubory)} z {len(ve_slozce)} kusovníků "
                       "ve složce, CSV proto obsahují jen tyto pozice")
-    nedodelky = [el.pozice for el in elementy if any(not s.prepocteno for s in el.skla)]
+    nedodelky = [el.pozice for el in elementy
+                 if not el.corona and any(not s.prepocteno for s in el.skla)]
     if nedodelky:
         zprava.append(f"POZOR - nepřepočteno: pozice {', '.join(nedodelky)}")
+    if necitelne:
+        zprava.append(f"POZOR - nepřečteno, chybí v CSV: {', '.join(necitelne)}")
 
     text = "\n".join(zprava)
     open(os.path.join(vystup, "prevod_report.txt"), "w", encoding="utf-8").write(text)

@@ -148,6 +148,43 @@ def test_spust_jen_vybrane_soubory(tmp_path):
     assert "jen 1 z 10" in text
 
 
+def test_kusovnik_ulozeny_wordem_neshodi_prevod(tmp_path):
+    """Word prepise tabulky, parser v nich nenajde nic. Zbytek se musi prevest."""
+    word = tmp_path / "Kusovník_ (230) _15.rtf"
+    word.write_text(r"{\rtf1\adeflang1025\ansi\ansicpg1250\uc1 {\rsid123}\trowd Kus:\cell 1\cell\row}",
+                    encoding="latin-1")
+    vybrane = p.najdi_kusovniky(ARCHIV)[:1] + [str(word)]
+    elementy, text = p.spust(ARCHIV, str(tmp_path / "out"), vybrane)
+    dobry, = [el for el in elementy if el.soubor != str(word)]   # spust soubory radi
+    assert [f.name for f in (tmp_path / "out").glob("Kusovník*.rtf")] == \
+        [f"Kusovník_poz{dobry.pozice}_LivIng_MD.rtf"]
+    assert word.name in text and "NEPŘEČTEN" in text
+    assert f"POZOR - nepřečteno, chybí v CSV: {word.name}" in text   # i v souhrnu na konci
+    assert [el.poznamky for el in elementy if el is not dobry][0]   # okno ukaze varovani
+
+
+def test_vybrane_pozice_zustanou_v_corone(tmp_path):
+    """Pozice oznacena jako Corona se neprevadi, ale jeji skla jdou do objednavky."""
+    vybrane = p.najdi_kusovniky(ARCHIV)[:2]          # pozice 1.1 (2 ks) a 1 (4 ks), stejna skla
+    elementy, text = p.spust(ARCHIV, str(tmp_path), vybrane, corona=[vybrane[0]])
+    corona, = [el for el in elementy if el.corona]
+    assert corona.pozice == "1.1"
+    assert not any(s.prepocteno for s in corona.skla) and not any(k.prepocteno for k in corona.kridla)
+
+    assert sorted(f.name for f in tmp_path.glob("Kusovník*.rtf")) == [
+        "Kusovník_poz1.1_Corona.rtf", "Kusovník_poz1_LivIng_MD.rtf"]
+    kopie = (tmp_path / "Kusovník_poz1.1_Corona.rtf").read_text(encoding="latin-1")
+    assert p.ZVYRAZNI_ZAP not in kopie                # nic prepsaneho
+
+    radky, ks, _ = p.souhrn_skel(elementy)
+    assert sorted((r[2], r[3], r[4], r[7]) for r in radky) == sorted([
+        ("1019,0", "1125,0", 4, ""), ("674,0", "1125,0", 4, ""),
+        ("1013,5", "1121,0", 2, "Corona"), ("668,5", "1121,0", 2, "Corona")])
+    podrobne = (tmp_path / "skla_podrobne.csv").read_text(encoding="utf-8-sig")
+    assert "Corona" in podrobne and p.NEOVERENO not in podrobne
+    assert "nepřepočteno" not in text                 # zamerne ponechane neni chyba
+
+
 
 # --- okno -----------------------------------------------------------------
 # Vzhled je ve web/, Python drzi jen Api. Testuje se tedy Api, ne widgety.
@@ -216,6 +253,13 @@ def test_prevest_jen_vybrane(api, tmp_path):
     v = api.prevest(ARCHIV, str(tmp_path), vybrane)
     assert [f.name for f in tmp_path.glob("Kusovník*.rtf")] == ["Kusovník_poz1.1_LivIng_MD.rtf"]
     assert v["ks"] and v["radky"] and v["klic"] in ("ok", "", "varovna")
+
+
+def test_prevest_s_pozici_v_corone(api, tmp_path):
+    """Zamerne ponechana Corona neni chyba -- okno nesmi hlasit neprepoctena skla."""
+    vybrane = p.najdi_kusovniky(ARCHIV)[:2]
+    v = api.prevest(ARCHIV, str(tmp_path), vybrane, [vybrane[0]])
+    assert v["klic"] == "ok" and "1 v Coroně" in v["stav"], v["stav"]
 
 
 def test_prevest_bez_vyberu_neprevadi(api, tmp_path):
@@ -323,6 +367,15 @@ def test_ikony_slunce_a_mesic():
     html = cti_web("index.html")
     assert 'class="mesic"' in html and 'class="slunce"' in html
     assert 'html[data-rezim="svetly"] .slunce, html[data-rezim="tmavy"] .mesic { display: none; }'         in html, "ikony se neprepinaji podle rezimu"
+
+
+def test_prepinac_corona_v_seznamu():
+    """Prepinac v radku seznamu se musi kreslit, prepinat a dojit az do Api.prevest."""
+    js = cti_web("app.js")
+    assert "corona: new Set()" in js
+    assert 'class="system" aria-pressed="${stav.corona.has(f.cesta)}"' in js
+    assert "stav.corona.has(c) ? stav.corona.delete(c) : stav.corona.add(c)" in js
+    assert "vybrane, [...stav.corona])" in js
 
 
 def test_tmavy_rezim_ma_stejne_klice():

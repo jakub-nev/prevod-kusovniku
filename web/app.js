@@ -2,7 +2,7 @@
 /* Obsluha okna. Veskery vypocet zustava v Pythonu, tohle jen vola api a kresli. */
 
 const $ = (s) => document.querySelector(s);
-const stav = { soubory: [], vybrane: new Set() };
+const stav = { soubory: [], vybrane: new Set(), corona: new Set() };
 
 /* Bez pywebview (tj. v prohlizeci pri ladeni vzhledu) se pouziji ukazkova data,
    at jde stranka otevrit a doladit bez spousteni cele aplikace.
@@ -48,6 +48,9 @@ function kresliSeznam() {
         <span>pozice ${f.pozice}</span>
         <span class="rozmer">${f.kus} ks</span>
         <span class="rozmer">${f.rozmer}</span>
+        <button class="system" aria-pressed="${stav.corona.has(f.cesta)}"
+                title="Corona = pozice se nepřevádí, skla jdou do objednávky beze změny"
+          >${stav.corona.has(f.cesta) ? "Corona" : "LivIng MD"}</button>
       </div>`).join("");
   }
   $("#pocet").textContent = stav.soubory.length
@@ -83,7 +86,7 @@ function kresliSouhrn(radky, ks, m2) {
     <thead><tr>${hlavy.map((h, i) =>
       `<th class="${CISELNE.has(i) ? "cislo" : ""}">${h}</th>`).join("")}</tr></thead>
     <tbody>${radky.map((r) =>
-      `<tr class="${r[7] ? "overit" : ""}">${bunky(r, "td")}</tr>`).join("")}</tbody>
+      `<tr class="${r[7].startsWith("NEPŘEPOČTENO") ? "overit" : ""}">${bunky(r, "td")}</tr>`).join("")}</tbody>
     <tfoot><tr>${bunky(["CELKEM", "", "", "", ks, m2, "", ""], "td")}</tr></tfoot>
   </table>`;
 }
@@ -116,7 +119,7 @@ async function prevest() {
   const vybrane = stav.soubory.filter((f) => stav.vybrane.has(f.cesta)).map((f) => f.cesta);
   if (UKAZKA) { nastavStav("Ukázková data — převod běží jen v aplikaci.", "varovna"); return; }
   nastavStav(`Převádím ${vybrane.length} kusovníků…`, "");
-  const v = await api().prevest($("#vstup").value, $("#vystup").value, vybrane);
+  const v = await api().prevest($("#vstup").value, $("#vystup").value, vybrane, [...stav.corona]);
   if (v.log !== undefined) kresliLog(v.log);
   if (v.radky) kresliSouhrn(v.radky, v.ks, v.m2);
   nastavStav(v.stav, v.klic);
@@ -125,6 +128,13 @@ async function prevest() {
 
 /* ---------- prihlaseni udalosti ---------- */
 document.addEventListener("click", async (e) => {
+  const system = e.target.closest(".system");       // prepinac uvnitr radku, vyber nemeni
+  if (system) {
+    const c = decodeURIComponent(system.closest(".polozka").dataset.cesta);
+    stav.corona.has(c) ? stav.corona.delete(c) : stav.corona.add(c);
+    kresliSeznam();
+    return;
+  }
   const polozka = e.target.closest(".polozka");
   if (polozka) {
     const c = decodeURIComponent(polozka.dataset.cesta);
