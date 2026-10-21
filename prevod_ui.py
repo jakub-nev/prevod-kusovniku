@@ -141,10 +141,27 @@ class Api:
                     f".  POZOR: {potize} tabulí nepřepočteno (viz červené řádky)." if potize
                     else ".  Zkontrolujte červené poznámky v průběhu." if varovani
                     else ".  Všechna skla přepočtena."))
-        return {"log": text, "radky": radky, "ks": ks,
+        porovnani = []
+        for el in elementy:
+            if el.pozice == "?":                   # nepřečtený kusovník nemá co ukázat
+                continue
+            r = prevod.porovnani(el)
+            porovnani.append({"pozice": el.pozice, "kus": el.kus,
+                              "rozmer": f"{el.sirka:.0f} × {el.vyska:.0f} mm",
+                              "system": "Corona" if el.corona else "LivIng MD",
+                              "original": el.soubor, "vystup": el.cil,
+                              "poznamky": el.poznamky, "radky": r,
+                              "zmen": sum(x["zmena"] for x in r)})
+        return {"log": text, "radky": radky, "ks": ks, "porovnani": porovnani,
                 "m2": f"{m2:.3f}".replace(".", ","),
                 "stav": stav, "klic": "varovna" if potize else "" if varovani else "ok",
                 "zalozka": "p-prubeh" if varovani else "p-souhrn"}
+
+    def nahled(self, cesta):
+        """Kusovník jako HTML pro prohlížeč originálu a výstupu vedle sebe."""
+        if not (cesta.lower().endswith(".rtf") and os.path.isfile(cesta)):
+            return '<p class="prazdno">Soubor neexistuje.</p>'
+        return prevod.nahled(cesta)
 
     # --- okolí -----------------------------------------------------------
     def prochazet(self, soucasna):

@@ -199,6 +199,29 @@ def test_optimalizace_prepise_dverni_kridlo(tmp_path):
     assert text.count(p.ZVYRAZNI_ZAP + "966,0") == 2
 
 
+def test_porovnani_puvodni_a_nove_hodnoty():
+    """Pro zalozku Porovnani: kazdy radek kusovniku s hodnotou Corony a LivIngu."""
+    el = p.nacti_element(glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf")[0])[0]
+    p.prepocti(el)
+    radky = {r["c"]: r for r in p.porovnani(el)}
+    assert (radky["1"]["puvodne"], radky["1"]["nove"], radky["1"]["rozdil"]) == (
+        "2\xa0213,0", "2\xa0191,0", "-22,0")
+
+
+def test_nahled_kusovniku_jako_html():
+    """Prohlizec vedle sebe: radky tabulek i vykres prvku (PNG vlozene v RTF)."""
+    html = p.nahled(glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf")[0])
+    assert "Rám vpravo 2" in html and "data:image/png;base64," in html
+    assert ">    Výztuž Bl 2.1" in html               # odsazeni vyztuzi jako ve Wordu
+
+
+def test_nahled_zvyrazni_zmeny(tmp_path):
+    """Ve vystupu jsou zmenene hodnoty zvyraznene stejne jako ve Wordu."""
+    p.spust(VECERA, str(tmp_path), glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf"))
+    html = p.nahled(str(tmp_path / "Kusovník_poz1_LivIng_MD.rtf"))
+    assert html.count("<mark>2\xa0191,0</mark>") == 2 and "<mark>x 1\xa0986,0</mark>" in html
+
+
 def test_rezne_delky_balkonovych_kridel():
     """Rez kridla = sklo + 2x zasunuti + 6, zasunuti 85 -> 90 (sklo o 10 mensi).
 
@@ -385,6 +408,22 @@ def test_prevest_s_pozici_v_corone(api, tmp_path):
     assert v["klic"] == "ok" and "1 v Coroně" in v["stav"], v["stav"]
 
 
+def test_prevest_vraci_porovnani(api, tmp_path):
+    """Okno dostane ke kazde prectene pozici radky Corona / LivIng a pocet zmen."""
+    vybrane = glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf") + glob.glob(VECERA + r"\*_15_*.rtf")
+    v = api.prevest(VECERA, str(tmp_path), vybrane)
+    assert [(x["pozice"], x["system"], x["zmen"]) for x in v["porovnani"]] == [("1", "LivIng MD", 3)]
+
+
+def test_nahled_obou_souboru(api, tmp_path):
+    """Prohlizec dostane cestu k originalu i k vystupu a Api z nich udela HTML."""
+    vstup = glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf")
+    x, = api.prevest(VECERA, str(tmp_path), vstup)["porovnani"]
+    assert (x["original"], x["vystup"]) == (vstup[0], str(tmp_path / "Kusovník_poz1_LivIng_MD.rtf"))
+    assert "<mark>" in api.nahled(x["vystup"]) and "<mark>" not in api.nahled(x["original"])
+    assert "neexistuje" in api.nahled(str(tmp_path / "neni.rtf"))
+
+
 def test_prevest_bez_vyberu_neprevadi(api, tmp_path):
     """Bez zaskrtnuteho kusovniku se nic nedeje, jen se to rekne."""
     v = api.prevest(ARCHIV, str(tmp_path), [])
@@ -499,6 +538,40 @@ def test_prepinac_corona_v_seznamu():
     assert 'class="system" aria-pressed="${stav.corona.has(f.cesta)}"' in js
     assert "stav.corona.has(c) ? stav.corona.delete(c) : stav.corona.add(c)" in js
     assert "vybrane, [...stav.corona])" in js
+
+
+def test_zalozka_porovnani():
+    """Po prevodu se porovnani nakresli do vlastni zalozky."""
+    assert 'data-panel="p-porovnani"' in cti_web("index.html")
+    assert "kresliPorovnani(v.porovnani)" in cti_web("app.js")
+
+
+def test_porovnani_prepina_pozice_a_filtr():
+    """Klik na pozici a zaskrtnuti 'jen zmenene' musi porovnani prekreslit."""
+    js = cti_web("app.js")
+    assert "porovnani: [], poz: 0" in js
+    assert "stav.poz = +poz.dataset.poz; kresliPorovnani();" in js
+    assert '$("#jen-zmeny").addEventListener("change", () => kresliPorovnani());' in js
+    # soubory jsou serazene podle jmena (11, 12, 1, 3 ...), pozice se radi podle cisla
+    assert 'a.pozice.localeCompare(b.pozice, "cs", { numeric: true })' in js
+
+
+def test_prohlizec_kusovniku_vedle_sebe():
+    """Original a vystup vedle sebe, posouvaji se spolu, Esc zavira."""
+    html = cti_web("index.html")
+    assert 'id="prohlizec"' in html and 'id="otevrit-nahled"' in html
+    js = cti_web("app.js")
+    assert "api().nahled(x.original), api().nahled(x.vystup)" in js
+    assert "druhy.scrollTop = e.target.scrollTop" in js
+    assert 'e.key === "Escape"' in js
+
+
+def test_prohlizec_tlacitka():
+    """Tlacitko otevre, Zavrit zavre, pozice v prohlizeci prepne oba kusovniky."""
+    js = cti_web("app.js")
+    assert 'e.target.closest("#otevrit-nahled")) {\n    otevriNahled();' in js
+    assert 'e.target.closest("#zavrit-nahled")) {\n    $("#prohlizec").hidden = true;' in js
+    assert 'if (!$("#prohlizec").hidden) otevriNahled();' in js
 
 
 def test_tmavy_rezim_ma_stejne_klice():

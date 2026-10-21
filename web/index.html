@@ -205,6 +205,56 @@ tfoot td { position: sticky; bottom: 0; padding: 11px 12px; font-weight: 700;
            border-top: 2px solid var(--green); }
 .cislo { text-align: right; font-variant-numeric: tabular-nums; }
 .rolovatelne { flex: 1 1 auto; min-height: 0; overflow: auto; }
+
+/* ---------- porovnani ---------- */
+/* Vyber pozice stejnymi tichymi tlacitky jako prepinac systemu v seznamu. */
+.volba { display: flex; flex-wrap: wrap; gap: 6px; }
+.volba .poz {
+  padding: 4px 10px; cursor: pointer; background: none; border-radius: 0;
+  border: 1px solid var(--line-2); color: var(--text-2);
+  font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 12px;
+}
+.volba .poz span { margin-left: 8px; color: var(--green); font-weight: 700; }
+.volba .poz span.nic { color: var(--text-3); font-weight: 400; }
+.volba .poz:hover { border-color: var(--green); color: var(--green); }
+.volba .poz[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--page); }
+.volba .poz[aria-pressed="true"] span { color: inherit; }
+.volba .poz:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.lista .jen { margin-left: auto; align-self: flex-start; white-space: nowrap;
+              color: var(--text-2); font-size: 13px; cursor: pointer; }
+.lista .jen input { accent-color: var(--green); margin-right: 6px; vertical-align: -2px; }
+.poznamky { color: var(--warn); font-size: 13px; margin-bottom: 10px; }
+.poznamky:empty { display: none; }
+#porovnani tbody td { padding: 5px 12px; }          /* hustsi radky, kusovnik je dlouhy */
+tr.zmena td:first-child { box-shadow: inset 3px 0 0 var(--green); }
+tr.zmena td.nove, tr.zmena td.rozdil { color: var(--green); font-weight: 700; }
+td.puvodne { color: var(--text-2); }
+td.nazev { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- prohlizec kusovniku ---------- */
+.prohlizec { position: fixed; inset: 0; z-index: 10; background: var(--block);
+             display: flex; flex-direction: column; }
+.prohlizec[hidden] { display: none; }
+.prohlizec-lista { display: flex; align-items: flex-start; gap: 16px; padding: 14px 20px;
+                   background: var(--page); border-bottom: 2px solid var(--green); }
+.prohlizec-lista .volba { flex: 1 1 auto; }
+.dvojice { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr;
+           gap: 16px; padding: 12px 20px 16px; }
+.dvojice section { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.dvojice h3 { font-size: 12px; font-weight: 400; color: var(--text-2); margin-bottom: 6px; line-height: 20px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dvojice h3 b { color: var(--text); letter-spacing: var(--tracking); text-transform: uppercase;
+                margin-right: 10px; }
+.list { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* Papir je bily i v tmavem rezimu -- ma vypadat jako kusovnik ve Wordu. */
+.papir { background: #fff; color: #000; font: 9pt Arial, Helvetica, sans-serif;
+         padding: 28px 32px; margin: 0 auto 8px; width: max-content;
+         box-shadow: 0 1px 4px rgba(0, 0, 0, .3); user-select: text; cursor: text; }
+.papir table { width: auto; table-layout: fixed; border-collapse: collapse; font: inherit; }
+.papir tbody tr { background: none; }
+.papir tbody td { padding: 1px 5px; border-bottom: 0; vertical-align: top; white-space: pre-wrap;
+                  overflow-wrap: anywhere; }
+.papir mark { background: #ffff00; color: #c00000; }
 .prazdno { color: var(--text-2); padding: 48px 0; text-align: center; }
 
 /* ---------- stav ---------- */
@@ -240,8 +290,8 @@ tfoot td { position: sticky; bottom: 0; padding: 11px 12px; font-weight: 700;
 <main class="obsah">
   <div class="stred"><section class="hero">
     <h1>Corona CT 70 AS <span class="sipka">→</span> Schüco LivIng MD</h1>
-    <p>Mění se rozměry skel a řezné délky okenních křídel. Ostatní profily i dveřní křídla
-       zůstávají původní.</p>
+    <p>Mění se rozměry skel, řezné délky křídel a boky rámu balkonových dveří. Ostatní
+       profily zůstávají původní.</p>
   </section></div>
 
   <div class="pas"><div class="stred"><dl class="odecet" id="odecet"></dl></div></div>
@@ -271,6 +321,7 @@ tfoot td { position: sticky; bottom: 0; padding: 11px 12px; font-weight: 700;
     <button role="tab" aria-selected="true"  data-panel="p-vyber">Kusovníky</button>
     <button role="tab" aria-selected="false" data-panel="p-prubeh">Průběh převodu</button>
     <button role="tab" aria-selected="false" data-panel="p-souhrn">Souhrn skel</button>
+    <button role="tab" aria-selected="false" data-panel="p-porovnani">Porovnání</button>
   </div>
 
   <section class="panel aktivni" id="p-vyber">
@@ -290,6 +341,16 @@ tfoot td { position: sticky; bottom: 0; padding: 11px 12px; font-weight: 700;
   <section class="panel" id="p-souhrn">
     <div id="souhrn" class="rolovatelne"><p class="prazdno">Zatím není co objednávat — spusťte Převést.</p></div>
   </section>
+
+  <section class="panel" id="p-porovnani">
+    <div class="lista">
+      <div class="volba" id="volba"></div>
+      <label class="jen"><input type="checkbox" id="jen-zmeny"> jen změněné řádky</label>
+      <button class="tl male" id="otevrit-nahled">Kusovníky vedle sebe</button>
+    </div>
+    <p class="poznamky" id="poznamky"></p>
+    <div id="porovnani" class="rolovatelne"><p class="prazdno">Porovnání Corona / LivIng se ukáže po převodu.</p></div>
+  </section>
   </div>
 </main>
 
@@ -297,6 +358,24 @@ tfoot td { position: sticky; bottom: 0; padding: 11px 12px; font-weight: 700;
   <span class="tecka"></span>
   <span class="text" id="stav-text">Vyberte kusovníky a stiskněte Převést.</span>
 </div></footer>
+
+<!-- Prohlizec kusovniku pres cele okno: original vlevo, vystup vpravo -->
+<div class="prohlizec" id="prohlizec" hidden>
+  <div class="prohlizec-lista">
+    <div class="volba" id="volba-nahled"></div>
+    <button class="tl male" id="zavrit-nahled">Zavřít  Esc</button>
+  </div>
+  <div class="dvojice">
+    <section>
+      <h3><b>Corona CT 70 AS</b><span id="soubor-corona"></span></h3>
+      <div class="list" id="nahled-corona"></div>
+    </section>
+    <section>
+      <h3><b id="system-nahled">LivIng MD</b><span id="soubor-living"></span></h3>
+      <div class="list" id="nahled-living"></div>
+    </section>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

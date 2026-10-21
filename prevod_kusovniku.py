@@ -17,8 +17,11 @@ POZOR: v optimalizaci se přepisují jen délky kusů. Rozvržení po tyčích,
 zbytkové délky ani prořez se nepřepočítávají -- po změně délek je potřeba
 optimalizaci spustit znovu v programu, který ji vyrobil.
 """
+import base64
+import binascii
 import csv
 import glob
+import html
 import os
 import re
 import sys
@@ -142,6 +145,7 @@ class Element:
     kridla: list = field(default_factory=list)     # profily křídla, jeden na stranu
     poznamky: list = field(default_factory=list)
     corona: bool = False                           # v okně ponecháno v Coroně, nepřevádí se
+    cil: str = ""                                  # zapsaný kusovník (LivIng nebo kopie Corony)
 
 
 def _text(seg):
@@ -370,14 +374,46 @@ def _prepis_bunky(raw, radky, upravy, cil):
     open(cil, "w", encoding="latin-1").write(novy)
 
 
-def zapis_kusovnik(raw, radky, el, cil):
-    """Zapíše kopii kusovníku se zvýrazněnými novými rozměry skel a řezy křídel."""
+def _upravy(el):
+    """Co se v kusovníku přepisuje: [(řádek, ((buňka, nová hodnota), ...))]."""
     upravy = [(s.radek, ((5, s.sirka_nova), (6, s.vyska_nova)))
               for s in el.skla if s.prepocteno]
     upravy += [(k.radek, ((6, k.rez_novy),)) for k in el.kridla
                if k.prepocteno and k.rez_novy != k.rez]   # shodu nemá smysl zvýrazňovat
     upravy += [(b.radek, ((6, b.rez_novy),)) for b in el.boky if b.rez_novy]
-    _prepis_bunky(raw, radky, upravy, cil)
+    return upravy
+
+
+def zapis_kusovnik(raw, radky, el, cil):
+    """Zapíše kopii kusovníku se zvýrazněnými novými rozměry skel a řezy křídel."""
+    _prepis_bunky(raw, radky, _upravy(el), cil)
+
+
+def _mm(v):
+    """1191.0 -> '1 191,0' s nedělitelnou mezerou, jak míry píše SchüCal."""
+    return f"{v:,.1f}".replace(",", "\xa0").replace(".", ",")
+
+
+def porovnani(el):
+    """Řádky kusovníku s hodnotou Corony a LivIngu -- pro záložku Porovnání v okně."""
+    zmeny = {radek: dict(bunky) for radek, bunky in _upravy(el)}
+    skla = {s.radek for s in el.skla}
+    out = []
+    for i, (_, _, b) in enumerate(nacti_element(el.soubor)[2]):
+        if len(b) < 7 or not re.fullmatch(r"\d+", b[0]):
+            continue
+        z = zmeny.get(i, {})
+        if i in skla:                              # Poř | Kus | Typ skla | Tl. | Fe | šířka | x výška
+            art, nazev, fe, bunky, stare = "", b[2], b[4], (5, 6), [b[5], b[6].lstrip("x ")]
+        else:                                      # Poř | Kus | Art | Označení | | Fe | Míra | Řez
+            art, nazev, fe, bunky, stare = b[2], b[3], b[5], (6,), [b[6]]
+        nove = [_mm(z[c]) if c in z else s for c, s in zip(bunky, stare)]
+        rozdil = [f"{z[c] - _cislo(s):+.1f}".replace(".", ",")
+                  for c, s in zip(bunky, stare) if c in z]
+        out.append({"c": b[0], "kus": b[1], "art": art, "nazev": nazev, "fe": fe,
+                    "puvodne": " × ".join(stare), "nove": " × ".join(nove),
+                    "rozdil": " / ".join(rozdil), "zmena": nove != stare})
+    return out
 
 
 def _des(v, mist=1):
@@ -413,6 +449,66 @@ def souhrn_skel(elementy):
                       ", ".join(v["pozice"]),
                       NEOVERENO if v["overit"] else "Corona" if corona else ""])
     return radky, celkem_ks, celkem_m2
+
+
+ZAROVNANI = {"l": "left", "r": "right", "c": "center"}
+
+
+def _bunka_html(rtf, cary):
+    """Jedna buňka tabulky SchüCalu jako <td>: zarovnání, tučné, velikost, čáry, obrázek."""
+    styl = ["border-bottom:1px solid #000"] if "clbrdrb" in cary else []
+    styl += ["border-top:1px solid #000"] if "clbrdrt" in cary else []
+    if q := re.search(r"\\q([lrc])", rtf):
+        styl.append(f"text-align:{ZAROVNANI[q.group(1)]}")
+    if (b := re.search(r"\\b([01]?)(?![a-zA-Z0-9])", rtf)) and b.group(1) != "0":
+        styl.append("font-weight:700")
+    if fs := re.search(r"\\fs(\d+)", rtf):
+        styl.append(f"font-size:{int(fs.group(1)) / 2:g}pt")
+
+    obrazky = []
+
+    def obrazek(m):                                # PNG výkres prvku, velikost v twipech
+        hlava, hexa = m.group(1), re.sub(r"\s", "", m.group(2))
+        mira = {k: int(v) for k, v in re.findall(r"\\(pic\w+?)(\d+)", hlava)}
+        sirka = mira.get("picwgoal", 0) * mira.get("picscalex", 100) / 100 / 15
+        data = base64.b64encode(binascii.unhexlify(hexa[:len(hexa) // 2 * 2])).decode()
+        obrazky.append(f'<img src="data:image/png;base64,{data}" style="width:{sirka:.0f}px">')
+        return f"\x05{len(obrazky) - 1}\x05"
+
+    rtf = re.sub(r"\{\\pict((?:\\[a-z]+-?\d*)+)\s*([0-9a-fA-F\s]+)\}", obrazek, rtf)
+    rtf = re.sub(r"\{\\field\{\\\*\\fldinst\{?\s*(\w+)[^}]*\}?\}\}",
+                 lambda m: "1" if m.group(1) == "PAGE" else "", rtf)
+    rtf = rtf.replace(ZVYRAZNI_ZAP, "\x01").replace(ZVYRAZNI_VYP, "\x02")
+    rtf = re.sub(r"\\par(?![a-zA-Z])", "\x04", rtf)
+    # _text ořízne mezery, ale odsazení výztuží patří k vzhledu -- zarážky kolem je udrží
+    text = html.escape(_text("\x06" + rtf.lstrip() + "\x06").strip("\x06").rstrip(), quote=False)
+    text = text.replace("\x01", "<mark>").replace("\x02", "</mark>").replace("\x04", "<br>")
+    text = re.sub("\x05(\\d+)\x05", lambda m: obrazky[int(m.group(1))], text)
+    return f'<td style="{";".join(styl)}">{text or "&nbsp;"}</td>'
+
+
+def nahled(cesta):
+    """Kusovník jako HTML pro prohlížení vedle sebe -- vypadá jako ve Wordu.
+
+    SchüCal píše celý kusovník jako řádky tabulek (i hlavičku stránky), každý řádek
+    má vlastní šířky sloupců v twipech (1 px = 15 twipů)."""
+    raw = open(cesta, encoding="latin-1").read().replace("\r", "").replace("\n", "")
+    radky = [m.group(1) for m in re.finditer(r"\\trowd(.*?)\\row(?![a-zA-Z])", raw, re.S)]
+    if not radky:
+        return '<p class="prazdno">Tenhle kusovník nejde zobrazit (uložený ve Wordu?).</p>'
+    sirka = max(int(x) for r in radky for x in re.findall(r"\\cellx(\d+)", r))
+    out = [f'<div class="papir" data-sirka="{sirka / 15:.0f}">']
+    for r in radky:
+        hlava, _, obsah = r.partition("\\intbl")
+        casti = re.split(r"\\cellx(\d+)", hlava)   # [čáry 1, x 1, čáry 2, x 2, ..., zbytek]
+        meze = [int(x) for x in casti[1::2]]
+        sloupce = "".join(f'<col style="width:{(b - a) / 15:.0f}px">'
+                          for a, b in zip([0] + meze, meze))
+        bunky = "".join(_bunka_html(b, c) for b, c in
+                        zip(re.split(r"\\cell(?![a-zA-Z])", obsah)[:-1], casti[0::2]))
+        out.append(f'<table style="width:{meze[-1] / 15:.0f}px"><colgroup>{sloupce}'
+                   f'</colgroup><tr>{bunky}</tr></table>')
+    return "".join(out) + "</div>"
 
 
 def zapis_seznam_skel(elementy, slozka):
@@ -482,8 +578,8 @@ def spust(vstup, vystup, soubory=None, corona=()):
         el.corona = os.path.normpath(cesta) in corona
         if not el.corona:
             prepocti(el)
-        cil = os.path.join(vystup, f"Kusovník_poz{el.pozice}_"
-                                   f"{'Corona' if el.corona else 'LivIng_MD'}.rtf")
+        cil = el.cil = os.path.join(vystup, f"Kusovník_poz{el.pozice}_"
+                                            f"{'Corona' if el.corona else 'LivIng_MD'}.rtf")
         try:
             zapis_kusovnik(raw, radky, el, cil)
         except PermissionError:                    # soubor bývá otevřený ve Wordu
