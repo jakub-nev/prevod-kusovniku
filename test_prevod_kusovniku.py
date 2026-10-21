@@ -13,6 +13,7 @@ import pytest
 import prevod_kusovniku as p
 
 ARCHIV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Archiv")
+VECERA = os.path.join(os.path.dirname(ARCHIV), "Večeřa")    # zakazka 230: balkonovka
 
 
 def test_cislo():
@@ -41,7 +42,7 @@ def test_stulp_a_pevne_zaskleni():
 
     el3 = p.nacti_element(glob.glob(ARCHIV + r"\*_3_22_6_12_55_54.rtf")[0])[0]
     p.prepocti(el3)
-    assert [s.v_kridle for s in el3.skla] == [True, False, True]
+    assert [s.kridlo for s in el3.skla] == ["8866", "", "8866"]
     assert [(s.sirka_nova, s.vyska_nova) for s in el3.skla] == [
         (602.3, 1120.0), (722.3, 1216.0), (602.3, 1120.0)]
 
@@ -53,25 +54,76 @@ def test_vchodove_dvere_s_prahem():
     """
     el = p.nacti_element(glob.glob(ARCHIV + r"\*_8_22_6_12_55_55.rtf")[0])[0]
     p.prepocti(el)
-    assert el.prah and [s.v_dverich for s in el.skla] == [True]
+    assert el.prah and [s.kridlo for s in el.skla] == ["8577"]
     assert [(s.sirka_nova, s.vyska_nova) for s in el.skla] == [(671.0, 1751.0)]
     assert not el.poznamky, el.poznamky
 
 
+def test_ram_podle_clanku():
+    """Dverni ram 8864 (70/78) a okenni 8865 (70/68) se rozlisi podle clanku bez barvy."""
+    el = p.nacti_element(glob.glob(ARCHIV + r"\*_8_22_6_12_55_55.rtf")[0])[0]
+    assert el.ram == "8864"
+
+
+def test_pevne_zaskleni_v_dverim_ramu():
+    """Sklo primo v ramu 8864 (70/78): Corona 60, LivIng 19412 (82/80) MD 62."""
+    el = p.Element("x", system="(145) Corona CT 70 AS", sirka=1000.0, vyska=2000.0, ram="8864",
+                   ram_strany={"dole", "nahoře", "vpravo", "vlevo"}, ram_vyska=2000.0,
+                   skla=[p.Sklo("1", "", "", 1, 880.0, 1880.0, radek=0)])
+    p.prepocti(el)
+    assert [(s.sirka_nova, s.vyska_nova) for s in el.skla] == [(876.0, 1876.0)], el.poznamky
+
+
+def test_neznamy_profil_neshodi_prevod():
+    """Ram, ktery neni v tabulkach, se nesmi odhadnout -- prvek zustane nepřepočten."""
+    el = p.Element("x", system="(145) Corona CT 70 AS", sirka=1000.0, vyska=2000.0, ram="9999",
+                   ram_strany={"dole", "nahoře", "vpravo", "vlevo"},
+                   skla=[p.Sklo("1", "", "", 1, 900.0, 1900.0, radek=0)])
+    p.prepocti(el)
+    assert el.poznamky == ["neznámý profil 9999 - nepřepočteno"]
+
+
+def test_neznamy_sloupek_neshodi_prevod():
+    el = p.Element("x", system="(145) Corona CT 70 AS", sirka=1000.0, vyska=2000.0, ram="8865",
+                   ram_strany={"dole", "nahoře", "vpravo", "vlevo"}, delice=["9999"],
+                   skla=[p.Sklo("1", "", "", 1, 400.0, 1900.0, radek=0),
+                         p.Sklo("2", "", "", 1, 400.0, 1900.0, radek=1)])
+    p.prepocti(el)
+    assert el.poznamky == ["neznámý profil 9999 - nepřepočteno"]
+
+
 def test_okenni_kridlo_na_prahu():
-    """Pozice 6 = okenní rám + vchodový práh. Dole Corona 70 (5+65), LivIng 68 (5+63)."""
+    """Pozice 6 = balkonové dveře bez spodního rámu. Dole Corona 70 (5+65), LivIng 68 (5+63)."""
     el = p.nacti_element(glob.glob(ARCHIV + r"\*_6_22_6_12_55_55.rtf")[0])[0]
     p.prepocti(el)
-    assert "dole" not in el.ram_strany and p._na_prahu(el, "kridlo")
+    assert "dole" not in el.ram_strany and p._na_prahu(el, el.skla[0])
     assert [(s.sirka_nova, s.vyska_nova) for s in el.skla] == [(715.0, 1797.0)]
     assert not el.poznamky, el.poznamky
+
+
+def test_balkonove_kridlo():
+    """Vecera poz 1 = balkonovka 8563 (70/103) v ramu 8865 bez spodniho ramu.
+
+    Corona: sklo 85 pod hranou kridla, dole mezera 7. LivIng 19432 (82/110): 90.
+    Sirka 1065 - 2*(37+90) = 811, vyska 2210 - (37+90) - (7+90) = 1986.
+    """
+    el = p.nacti_element(glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf")[0])[0]
+    p.prepocti(el)
+    assert [(s.sirka_nova, s.vyska_nova) for s in el.skla] == [(811.0, 1986.0)], el.poznamky
+
+
+def test_report_jmenuje_nahrady_profilu(tmp_path):
+    """V prubehu je u pozice videt, ktery ram a kridlo Corony se nahrazuje cim."""
+    _, text = p.spust(VECERA, str(tmp_path), glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf"))
+    assert ("    rám 70/68 -> 19411 Blendrahmen 82/70, "
+            "balkonové křídlo 70/103 -> 19432 Flügelrahmen 82/110") in text.splitlines()
 
 
 def test_rezne_delky_kridel():
     """Rezna delka kridla = sklo + 2x zasunuti + svar 6.
 
     Poz 1: sirka u sloupku roste o 1,5 (T-profil w 14,5 -> 13), vyska mezi ramy
-    se nemeni (w 37 = 37). Poz 8: dvernich kridel se prevod nedotyka.
+    se nemeni (w 37 = 37).
     """
     el1 = p.nacti_element(glob.glob(ARCHIV + r"\*_1_22_6_12_55_54.rtf")[0])[0]
     p.prepocti(el1)
@@ -80,10 +132,81 @@ def test_rezne_delky_kridel():
     assert zmeny[("1", True)] == (804.5, 806.0)
     assert zmeny[("1", False)] == (1257.0, 1257.0)
 
-    el8 = p.nacti_element(glob.glob(ARCHIV + r"\*_8_22_6_12_55_55.rtf")[0])[0]
-    p.prepocti(el8)
-    assert not any(k.prepocteno for k in el8.kridla)
-    assert not el8.poznamky, el8.poznamky
+
+def test_boky_ramu_na_prahu_livingu():
+    """Vecera poz 1: bez spodniho ramu dostane LivIng prah 25255500/600, boky 2213 -> 2191.
+
+    Hodnota z rucne opraveneho kusovniku zadavatele.
+    """
+    el = p.nacti_element(glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf")[0])[0]
+    p.prepocti(el)
+    assert [b.rez_novy for b in el.boky] == [2191.0, 2191.0], el.poznamky
+
+
+def test_balkonove_dvere_s_okennim_kridlem_maji_prah():
+    """Poz 6 (254): "Balk. dvere ... bez ramu" s kridlem 70/83 -- prah dostane taky, 1968 -> 1946."""
+    el = p.nacti_element(glob.glob(ARCHIV + r"\*_6_22_6_12_55_55.rtf")[0])[0]
+    p.prepocti(el)
+    assert [b.rez_novy for b in el.boky] == [1946.0, 1946.0], el.poznamky
+
+
+def test_zapis_boku_ramu(tmp_path):
+    """Zkracene boky se do kusovniku zapisou zvyraznene jako ostatni zmeny."""
+    p.spust(VECERA, str(tmp_path), glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf"))
+    text = (tmp_path / "Kusovník_poz1_LivIng_MD.rtf").read_text(encoding="latin-1")
+    assert text.count(p.ZVYRAZNI_ZAP + r"2\'A0191,0") == 2
+
+
+def test_optimalizace_prepise_boky_ramu(tmp_path):
+    """Boky se v optimalizaci paruji pres pozici a popisek Bl 2 / Bl 4."""
+    p.spust(VECERA, str(tmp_path), glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf"))
+    text = (tmp_path / "Optimalizace_přířezu_LivIng_MD.rtf").read_text(encoding="latin-1")
+    assert text.count(p.ZVYRAZNI_ZAP + r"2\'A0191,0") == 2
+
+
+def test_report_jmenuje_i_sloupek(tmp_path):
+    _, text = p.spust(VECERA, str(tmp_path), glob.glob(VECERA + r"\*_13_12_10_11_12_15.rtf"))
+    assert ("    dveřní rám 70/78 -> 19412 Blendrahmen 82/80, T-profil 70/110 -> 19466 T-Profil "
+            "82/112, dveřní křídlo 70/118 -> 19433 Flügelrahmen 82/125") in text.splitlines()
+
+
+def test_report_ukaze_boky_ramu(tmp_path):
+    _, text = p.spust(VECERA, str(tmp_path), glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf"))
+    assert "    rám boky 2x   2213.0  ->   2191.0   (práh LivIng 25255500/600)" in text.splitlines()
+
+
+def test_delice_podle_clanku():
+    """Dverni sloupek 8848 (T 70/110) ma jiny odpocet nez okenni 8869 (T 70/91)."""
+    el = p.nacti_element(glob.glob(VECERA + r"\*_13_12_10_11_12_15.rtf")[0])[0]
+    assert el.delice == ["8848"]
+
+
+def test_dvere_vedle_prazdneho_pole():
+    """Vecera poz 13: dvere 8577 u sloupku 8848 (T 70/110 -> T 82/112), druhe pole bez skla.
+
+    Pole 1030 = ram 47 + kridlo 959 + sloupek 24 (overeno na vykresu SchuCalu).
+    Sirka 759 + (124 - 128) + (147 - 152) = 750, vyska 1956 - 5 - 5 = 1946.
+    """
+    el = p.nacti_element(glob.glob(VECERA + r"\*_13_12_10_11_12_15.rtf")[0])[0]
+    p.prepocti(el)
+    assert [(s.sirka_nova, s.vyska_nova) for s in el.skla] == [(750.0, 1946.0)], el.poznamky
+
+
+def test_optimalizace_prepise_dverni_kridlo(tmp_path):
+    """Dverni kridlo je v optimalizaci Tr 1-1 / Tr 1-3, ne Fl. Poz 13: 965 -> 966."""
+    p.spust(VECERA, str(tmp_path), glob.glob(VECERA + r"\*_13_12_10_11_12_15.rtf"))
+    text = (tmp_path / "Optimalizace_přířezu_LivIng_MD.rtf").read_text(encoding="latin-1")
+    assert text.count(p.ZVYRAZNI_ZAP + "966,0") == 2
+
+
+def test_rezne_delky_balkonovych_kridel():
+    """Rez kridla = sklo + 2x zasunuti + 6, zasunuti 85 -> 90 (sklo o 10 mensi).
+
+    Ram ma v obou soustavach stejne w, takze delky vychazi stejne jako v Corone.
+    """
+    el = p.nacti_element(glob.glob(VECERA + r"\*_1_12_10_11_12_14.rtf")[0])[0]
+    p.prepocti(el)
+    assert [k.rez_novy for k in el.kridla] == [997.0, 2172.0, 997.0, 2172.0]
 
 
 def test_zapis_zvyrazni_sklo_i_kridlo(tmp_path):

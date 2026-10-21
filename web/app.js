@@ -16,7 +16,7 @@ const MOCK = {
     vstup: "E:\\Documents\\GitHub\\prevod-kusovniku\\Archiv",
     vystup: "E:\\Documents\\GitHub\\prevod-kusovniku\\LivIng_MD",
     tmavy: false,
-    odecet: [["RÁM", 70], ["KŘÍDLO", 83], ["T-PROFIL", 92], ["ŠTULP b", 74]],
+    odecet: [["RÁM", "70 / 80"], ["KŘÍDLO", "83 / 110 / 125"], ["T-PROFIL", 92], ["ŠTULP b", 74]],
   },
   seznam: [
     ["1.1", 2, "2045 × 1355 mm"], ["1", 4, "2045 × 1355 mm"], ["2.1", 3, "550 × 845 mm"],

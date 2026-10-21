@@ -6,10 +6,12 @@ se zvýrazněnými hodnotami a vyrobí seznam skel pro objednávku.
 Použití:
     python prevod_kusovniku.py [vstupni_slozka] [vystupni_slozka]
 
-Mění se rozměry skel a řezné délky okenních křídel, a to i v optimalizaci
-přířezu, je-li ve složce. Ostatní profily zůstávají původní (Corona) --
+Mění se rozměry skel, řezné délky křídel (okenních, balkonových i dveřních)
+a boků rámu, který v LivIngu stojí na prahu, a to i v optimalizaci přířezu,
+je-li ve složce. Odpočty se berou podle článku rámu, děliče a křídla (tabulka
+PROFILY). Ostatní profily zůstávají původní (Corona) --
 výztuže, zasklívačky a kování by potřebovaly artiklová data LivIng, která
-v katalogu nejsou. Dveřních křídel se převod nedotýká.
+v katalogu nejsou.
 
 POZOR: v optimalizaci se přepisují jen délky kusů. Rozvržení po tyčích,
 zbytkové délky ani prořez se nepřepočítávají -- po změně délek je potřeba
@@ -23,39 +25,50 @@ import sys
 from dataclasses import dataclass, field
 
 # --- Odpočtové míry -------------------------------------------------------
-# Vzdálenost hrany skla od reference: u rámu od vnější hrany prvku,
-# u sloupku a štulpu od osy profilu.
+# Profil se pozná podle článku Corony bez barvy (886616 -> 8866), LivIng je
+# jeho náhrada. Odpočty se měří od reference: u rámu a prahu od vnější hrany
+# prvku, u sloupku a štulpu od osy profilu.
+#   w   = hrana křídla od reference
+#   fix = hrana skla v pevném zasklení
+#   zasunutí = sklo pod hranou křídla, tj. řezná délka křídla = sklo + 2*zasunutí + SVAR
 #
-# Corona CT 70 AS -- odvozeno z kusovníků samotných:
-#   sklo v křídle = řezná délka křídla - 136, tj. w + 65
-#   w = 37 (rám), 14,5 (sloupek), 4,2 (štulp);  sklo přímo v rámu = 50
+# Corona CT 70 AS -- odvozeno z kusovníků samotných. Pevné zasklení v rámu 70/78
+# v datech nebylo, 60 je podle řady AS LivIng (rám 70/80 = 50/60) a hlídá ho
+# kontrola šířky. T-profil 70/110: w 24 z výkresu zakázky 230 poz 13 (pole 1030 =
+# 47 + křídlo 959 + 24), fix 37 = w + 13 jako u T 70/91, v datech nebyl.
 #
-# Schüco LivIng MD -- katalog 76666/02.2019, str. 153-161, sloupec křídlo 83 mm:
-#   křídlo: rám x=100 (str. 154), T-profil 92 x=76 (str. 158), štulp b=74 x=67 (str. 161)
-#   pevné zasklení: rám x=52 MD (str. 153), T-profil 92 x=28 MD (str. 157)
-KRIDLO_MM = 83   # pohledová šířka křídla LivIng; při změně přepsat tabulku LIVING
-RAM_MM = 70      # pohledová šířka rámu LivIng
+# Schüco LivIng MD -- katalog 09.2018 (5254_268666), str. 152-159, platí pro všechna křídla:
+#   w: rám 70 = 37, rám 80 = 47, T-profil 92 = 13, T-profil 112 = 23, štulp b=74 = 4
+#   fix MD: rám 70 = 52, rám 80 = 62, T-profil 92 = 28, T-profil 112 = 38
+#   zasunutí = x - w: 63 (82/83, rám 70 x=100), 90 (82/110, x=127), 105 (82/125, x=142)
+PROFILY = {"8865": ("rám 70/68", "19411 Blendrahmen 82/70"),
+           "8864": ("dveřní rám 70/78", "19412 Blendrahmen 82/80"),
+           "8869": ("T-profil 70/91", "19465 T-Profil 82/92"),
+           "8848": ("T-profil 70/110", "19466 T-Profil 82/112"),
+           "8636": ("štulp 70", "19472 Stulpprofil 74"),
+           "8866": ("křídlo 70/83", "19431 Flügelrahmen 82/83"),
+           "8563": ("balkonové křídlo 70/103", "19432 Flügelrahmen 82/110"),
+           "8577": ("dveřní křídlo 70/118", "19433 Flügelrahmen 82/125")}
+W = {"corona": {"8865": 37.0, "8864": 47.0, "8869": 14.5, "8848": 24.0, "8636": 4.2},
+     "living": {"8865": 37.0, "8864": 47.0, "8869": 13.0, "8848": 23.0, "8636": 4.0}}
+FIX = {"corona": {"8865": 50.0, "8864": 60.0, "8869": 27.5, "8848": 37.0, "8636": 47.2},
+       "living": {"8865": 52.0, "8864": 62.0, "8869": 28.0, "8848": 38.0, "8636": 47.0}}
+ZASUNUTI = {"corona": {"8866": 65.0, "8563": 85.0, "8577": 100.0},
+            "living": {"8866": 63.0, "8563": 90.0, "8577": 105.0}}
+# Křídlo bez spodního rámu (na prahu) končí mezeru nad spodní hranou prvku.
+# Corona: 70/83 = 5 (zakázka 254 poz 6), 70/103 = 7 (230 poz 1), 70/118 = 7 (254 poz 8).
+# LivIng mezeru přebírá -- katalog str. 194 dává u křídla 83 také 5, dveře nekótuje.
+MEZERA = {"8866": 5.0, "8563": 7.0, "8577": 7.0}
+# Balkonové dveře bez spodního rámu (SchüCal: "Balk. dveře ... bez rámu", křídlo
+# 70/83 i 70/103) dostanou v LivIngu práh 25255500/600 a boky rámu stojí na něm.
+# Katalog str. 115 dává práh 20 vysoký, 22 je z ruční opravy zadavatele
+# (zakázka 230 poz 1: bok 2213 -> 2191).
+PRAH_LIVING = 22.0
+
+RAM_MM = "70 / 80"          # pohledové šířky LivIng, jen pro popisky
+KRIDLO_MM = "83 / 110 / 125"
 T_PROFIL_MM = 92
 STULP_MM = 74
-
-CORONA = {"kridlo": {"ram": 102.0, "sloupek": 79.5, "stulp": 69.2,
-                     # křídlo na vchodovém prahu: mezera 5 + 65 (ověřeno na pozici 6)
-                     "prah": 70.0},
-          "fix": {"ram": 50.0, "sloupek": 27.5, "stulp": 47.2},
-          # dveře: rám 886416 w=47 + sklo 100 od hrany křídla; dole práh + mezera 7 + 100
-          "dvere": {"ram": 147.0, "prah": 107.0}}
-LIVING = {"kridlo": {"ram": 100.0, "sloupek": 76.0, "stulp": 67.0,
-                     # křídlo 83 na dveřním prahu, str. 194: pohledová 88 = mezera 5 + křídlo 83
-                     "prah": 68.0},
-          "fix": {"ram": 52.0, "sloupek": 28.0, "stulp": 47.0},
-          # dveře: křídlo 82/125 (19433) v rámu 80 -- tabulka str. 154, řádek
-          # Blendrahmen 80 / a=125: w=47, x=152, tj. sklo 105 pod hranou křídla.
-          # Práh 112 = 105 + mezera 7: katalog mezeru nekótuje, řezy str. 194/195 ji
-          # dávají 5, ale přebírá se Corona 7 (2015 - 1961 - 47 na pozici 8).
-          # Rám 80 platí jen pro dveře, okna jedou na rámu 70 (RAM_MM).
-          "dvere": {"ram": 152.0, "prah": 112.0}}
-
-POPIS = {"kridlo": "křídlo", "fix": "fix", "dvere": "dveře"}
 
 NEOVERENO = "NEPŘEPOČTENO - ověřit ručně"
 SOUHRN_SLOUPCE = ["Typ skla", "Tl. [mm]", "Šířka [mm]", "Výška [mm]", "Kus",
@@ -63,12 +76,6 @@ SOUHRN_SLOUPCE = ["Typ skla", "Tl. [mm]", "Šířka [mm]", "Výška [mm]", "Kus"
 
 SVAR = 6.0        # svarový přídavek: řezná délka = vnější míra + 6 (Corona i LivIng)
 TOLERANCE = 5.0   # větší odchylka kontroly = prvek se nepřepočítává
-
-# Zasunutí skla pod hranu okenního křídla: řezná délka = sklo + 2*zasunutí + SVAR.
-# Corona odvozeno z kusovníků (sedí na všech řádcích profilů křídel),
-# LivIng z katalogu str. 194, kóta 63 u křídla 83.
-# Dveřní křídla se záměrně nepřepočítávají -- zůstávají v původních hodnotách.
-ZASUNUTI = {"corona": 65.0, "living": 63.0}
 
 BARVY = r"{\colortbl ;\red192\green0\blue0;\red255\green255\blue0;}"
 ZVYRAZNI_ZAP, ZVYRAZNI_VYP = r"\cf1\highlight2 ", r" \highlight0\cf0 "
@@ -93,8 +100,7 @@ class Sklo:
     sirka: float
     vyska: float
     radek: int                                     # pořadí řádku v RTF
-    v_kridle: bool = False
-    v_dverich: bool = False
+    kridlo: str = ""                               # článek křídla bez barvy, "" = pevné zasklení
     sirka_nova: float = 0.0
     vyska_nova: float = 0.0
     prepocteno: bool = False
@@ -111,6 +117,14 @@ class Kridlo:
 
 
 @dataclass
+class BokRamu:
+    cislo: str                                     # "Rám vpravo 2" -> "2", v optimalizaci "Bl 2"
+    rez: float
+    radek: int
+    rez_novy: float = 0.0
+
+
+@dataclass
 class Element:
     soubor: str
     pozice: str = "?"
@@ -118,7 +132,9 @@ class Element:
     kus: int = 1
     sirka: float = 0.0
     vyska: float = 0.0
-    delice: list = field(default_factory=list)     # 'sloupek' / 'stulp'
+    ram: str = ""                                  # článek rámu bez barvy
+    boky: list = field(default_factory=list)       # svislé strany rámu (BokRamu)
+    delice: list = field(default_factory=list)     # články sloupků a štulpů bez barvy
     ram_strany: set = field(default_factory=set)   # dole / nahoře / vpravo / vlevo
     prah: bool = False                              # dveřní práh místo spodního rámu
     ram_vyska: float = 0.0                         # vnější výška rámu bez podkladového profilu
@@ -147,7 +163,7 @@ def nacti_element(cesta):
               [_text(c) for c in re.split(r"\\cell(?![a-zA-Z])", m.group(0))[:-1]])
              for m in re.finditer(r"\{\\trowd.*?\\row\}", raw, re.S)]
 
-    v_sklech, kridla_fe, dverni_fe, ram_rezy = False, set(), set(), []
+    v_sklech, kridla_fe = False, {}
     for i, (_, _, b) in enumerate(radky):
         if any("Tabule skla" in c for c in b):
             v_sklech = True
@@ -174,67 +190,92 @@ def nacti_element(cesta):
                                 sirka=_cislo(b[5]), vyska=_cislo(b[6].lstrip("x ")), radek=i))
         else:
             nazev, mira = b[3], b[6]
-            if nazev.startswith("Křídlo"):
-                kridla_fe.add(b[5])
+            if nazev.startswith(("Křídlo", "Dveř")):   # druh křídla rozliší až článek
+                kridla_fe[b[5]] = b[2][:4]
                 if mira:
                     el.kridla.append(Kridlo(fe=b[5], rez=_cislo(mira), radek=i,
                                             vodorovne="dole" in nazev or "nahoře" in nazev))
-            elif nazev.startswith("Dveř"):        # dveřní křídlo má jiné odpočty než okenní
-                dverni_fe.add(b[5])
-                if mira:
-                    el.kridla.append(Kridlo(fe=b[5], rez=_cislo(mira), radek=i,
-                                            vodorovne="dole" in nazev or "nahoře" in nazev))
-            elif nazev.startswith("Sloupek"):
-                el.delice.append("sloupek")
-            elif nazev.startswith("Stulp.profil"):
-                el.delice.append("stulp")
+            elif nazev.startswith(("Sloupek", "Stulp.profil")):
+                el.delice.append(b[2][:4])
             elif "práh" in nazev.lower():
                 el.prah = True
             elif nazev.startswith("Rám "):
                 strana = nazev.split()[1]
                 el.ram_strany.add(strana)
+                el.ram = el.ram or b[2][:4]
                 if strana in ("vpravo", "vlevo") and mira:
-                    ram_rezy.append(_cislo(mira))
+                    el.boky.append(BokRamu(nazev.split()[-1], _cislo(mira), i))
 
-    if ram_rezy:
-        el.ram_vyska = max(ram_rezy) - SVAR
+    if el.boky:
+        el.ram_vyska = max(b.rez for b in el.boky) - SVAR
     for s in el.skla:
-        s.v_kridle = s.fe in kridla_fe
-        s.v_dverich = s.fe in dverni_fe
+        s.kridlo = kridla_fe.get(s.fe, "")
     return el, raw, radky
 
 
-def _na_prahu(el, rezim):
-    """Spodní hrana je dveřní práh, ne rám: prvek má práh nebo nemá spodní rám."""
-    return rezim == "kridlo" and (el.prah or "dole" not in el.ram_strany)
+def _na_prahu(el, sklo):
+    """Pod křídlem je práh, ne rám: prvek má práh nebo nemá spodní rám."""
+    return bool(sklo.kridlo) and (el.prah or "dole" not in el.ram_strany)
 
 
-def _rezim(sklo):
-    return "dvere" if sklo.v_dverich else ("kridlo" if sklo.v_kridle else "fix")
+def _odpocet(soustava, el, sklo, strana):
+    """Hrana skla od reference na straně `strana` (ram / prah / článek děliče)."""
+    if strana == "ram":
+        strana = el.ram
+    if not sklo.kridlo:
+        return FIX[soustava][strana]
+    return ((MEZERA[sklo.kridlo] if strana == "prah" else W[soustava][strana])
+            + ZASUNUTI[soustava][sklo.kridlo])
+
+
+def _narust(el, sklo, strany):
+    """O kolik sklo v LivIngu naroste: odpočty Corony minus odpočty LivIng."""
+    return sum(_odpocet("corona", el, sklo, k) - _odpocet("living", el, sklo, k) for k in strany)
 
 
 def _sousedi(el, index):
     """Typ souseda vlevo a vpravo pro pole `index`. Prvky jsou jednořadé."""
-    delic = el.delice[0] if el.delice else "sloupek"
+    delic = el.delice[0] if el.delice else ""
+    if len(el.delice) == len(el.skla):             # jediné sklo vedle prázdného pole
+        return ("ram", delic)
     return ("ram" if index == 0 else delic,
             "ram" if index == len(el.skla) - 1 else delic)
 
 
 def prepocti_kridla(el):
-    """Doplní okenní křídla o nové řezné délky. Corona hodnotu nejdřív ověří."""
+    """Doplní křídla o nové řezné délky. Corona hodnotu nejdřív ověří."""
     sklo = {s.fe: s for s in el.skla}
     for k in el.kridla:
         s = sklo.get(k.fe)
-        if not s or not s.prepocteno or _rezim(s) != "kridlo":
-            continue                               # dveřních křídel se převod nedotýká
+        if not s or not s.prepocteno:
+            continue
         stare, nove = (s.sirka, s.sirka_nova) if k.vodorovne else (s.vyska, s.vyska_nova)
-        kontrola = stare + 2 * ZASUNUTI["corona"] + SVAR
+        kontrola = stare + 2 * ZASUNUTI["corona"][s.kridlo] + SVAR
         if abs(kontrola - k.rez) > 0.5:
             el.poznamky.append(f"Fe {k.fe}: řezná délka křídla {k.rez:.1f} neodpovídá "
                                f"kontrole {kontrola:.1f} - křídlo nepřepočteno")
             continue
-        k.rez_novy = round(nove + 2 * ZASUNUTI["living"] + SVAR, 1)
+        k.rez_novy = round(nove + 2 * ZASUNUTI["living"][s.kridlo] + SVAR, 1)
         k.prepocteno = True
+
+
+def _sedi_na_kridlo(el, sklo):
+    """Corona sklo musí dát řezné délky svého křídla (sklo + 2*zasunutí + SVAR)."""
+    rezy = [k for k in el.kridla if k.fe == sklo.fe]
+    return bool(rezy) and all(
+        abs((sklo.sirka if k.vodorovne else sklo.vyska)
+            + 2 * ZASUNUTI["corona"][sklo.kridlo] + SVAR - k.rez) <= 0.5 for k in rezy)
+
+
+def prepocti_boky(el):
+    """Zkrátí boky rámu o práh LivIng. Corona bok jde až na zem: výška + pokos nahoře."""
+    for b in el.boky:
+        kontrola = el.vyska + SVAR / 2
+        if abs(kontrola - b.rez) > 0.5:
+            el.poznamky.append(f"rám {b.cislo}: řezná délka {b.rez:.1f} neodpovídá "
+                               f"kontrole {kontrola:.1f} - bok nepřepočten")
+            continue
+        b.rez_novy = b.rez - PRAH_LIVING
 
 
 def prepocti(el):
@@ -242,56 +283,66 @@ def prepocti(el):
     if not el.skla:
         el.poznamky.append("prvek neobsahuje tabule skla")
         return el.skla
-    if any(s.v_dverich for s in el.skla) and not el.prah:
+    if any(s.kridlo == "8577" for s in el.skla) and not el.prah:
         el.poznamky.append("dveřní křídlo bez prahu - odpočet spodní hrany neznámý, nepřepočteno")
         return el.skla
     if "Corona CT 70" not in el.system:
         el.poznamky.append(f"jiný profilový systém ({el.system}) - nepřepočteno")
         return el.skla
+    neznamy = ({el.ram or "rám chybí"} | set(el.delice)
+               | {s.kridlo for s in el.skla if s.kridlo}) - PROFILY.keys()
+    if neznamy:
+        el.poznamky.append(f"neznámý profil {', '.join(sorted(neznamy))} - nepřepočteno")
+        return el.skla
     if len(set(el.delice)) > 1:
         el.poznamky.append("prvek míchá sloupky a štulpy - pořadí polí nelze určit")
         return el.skla
-    if el.delice and len(el.delice) != len(el.skla) - 1:
+    prazdne_pole = len(el.delice) == len(el.skla) == 1     # druhé pole bez skla (průchod)
+    if el.delice and len(el.delice) != len(el.skla) - 1 and not prazdne_pole:
         el.poznamky.append(f"děličů {len(el.delice)}, tabulí {len(el.skla)} - "
                            "prvek není jednořadý, nepřepočteno")
         return el.skla
 
     # Kontrola: stará skla složená s odpočty Corony musí dát celkovou šířku prvku.
+    # Šířku prázdného pole kusovník nezná -- tam zbývá jen kontrola řezů křídla.
     soucet = 0.0
     for i, s in enumerate(el.skla):
-        rezim = _rezim(s)
-        vlevo, vpravo = _sousedi(el, i)
-        soucet += s.sirka + CORONA[rezim][vlevo] + CORONA[rezim][vpravo]
+        soucet += s.sirka + sum(_odpocet("corona", el, s, k) for k in _sousedi(el, i))
     odchylka = el.sirka - soucet
-    if abs(odchylka) > TOLERANCE:
+    if prazdne_pole:
+        if not _sedi_na_kridlo(el, el.skla[0]):
+            el.poznamky.append("pole bez skla a sklo nesedí na řezy křídla - NEPŘEPOČTENO")
+            return el.skla
+        el.poznamky.append("pole bez skla - kontrola šířky nejde, "
+                           f"{'sloupek a práh zůstávají' if el.prah else 'sloupek zůstává'} "
+                           "Corona - zkontrolovat ručně")
+    elif abs(odchylka) > TOLERANCE:
         el.poznamky.append(f"kontrola šířky nesedí ({soucet:.1f} vs {el.sirka:.1f} mm, "
                            f"rozdíl {odchylka:+.1f}) - NEPŘEPOČTENO")
         return el.skla
-    if abs(odchylka) > 0.5:
+    elif abs(odchylka) > 0.5:
         el.poznamky.append(f"kontrola šířky: rozdíl {odchylka:+.1f} mm (převzato beze změny)")
 
     for s in el.skla:
-        if _rezim(s) == "dvere" or _na_prahu(el, _rezim(s)):
-            d = el.vyska - (s.vyska + CORONA[_rezim(s)]["ram"]
-                            + CORONA[_rezim(s)]["prah"])   # nahoře rám, dole práh
+        if _na_prahu(el, s):                       # nahoře rám, dole práh
+            d = el.vyska - (s.vyska + _odpocet("corona", el, s, "ram")
+                            + _odpocet("corona", el, s, "prah"))
         elif {"dole", "nahoře"} <= el.ram_strany and el.ram_vyska:
-            d = el.ram_vyska - (s.vyska + 2 * CORONA[_rezim(s)]["ram"])
+            d = el.ram_vyska - (s.vyska + 2 * _odpocet("corona", el, s, "ram"))
         else:
             continue
         if abs(d) > 0.5:
             el.poznamky.append(f"Fe {s.fe}: kontrola výšky rozdíl {d:+.1f} mm")
 
     for i, s in enumerate(el.skla):
-        rezim = _rezim(s)
-        vlevo, vpravo = _sousedi(el, i)
-        s.sirka_nova = round(s.sirka + (CORONA[rezim][vlevo] - LIVING[rezim][vlevo])
-                             + (CORONA[rezim][vpravo] - LIVING[rezim][vpravo]), 1)
-        dole = "prah" if (rezim == "dvere" or _na_prahu(el, rezim)) else "ram"
-        s.vyska_nova = round(s.vyska + (CORONA[rezim]["ram"] - LIVING[rezim]["ram"])
-                             + (CORONA[rezim][dole] - LIVING[rezim][dole]), 1)
+        dole = "prah" if _na_prahu(el, s) else "ram"
+        s.sirka_nova = round(s.sirka + _narust(el, s, _sousedi(el, i)), 1)
+        s.vyska_nova = round(s.vyska + _narust(el, s, ("ram", dole)), 1)
         s.prepocteno = True
 
     prepocti_kridla(el)
+    if not el.prah and "dole" not in el.ram_strany and any(s.kridlo for s in el.skla):
+        prepocti_boky(el)                          # balkonové dveře bez spodního rámu
     return el.skla
 
 
@@ -325,6 +376,7 @@ def zapis_kusovnik(raw, radky, el, cil):
               for s in el.skla if s.prepocteno]
     upravy += [(k.radek, ((6, k.rez_novy),)) for k in el.kridla
                if k.prepocteno and k.rez_novy != k.rez]   # shodu nemá smysl zvýrazňovat
+    upravy += [(b.radek, ((6, b.rez_novy),)) for b in el.boky if b.rez_novy]
     _prepis_bunky(raw, radky, upravy, cil)
 
 
@@ -442,9 +494,12 @@ def spust(vstup, vystup, soubory=None, corona=()):
                       f"  ->  {os.path.basename(cil)}")
         if el.corona:
             zprava.append("    zůstává Corona CT 70 AS, nepřevádí se")
+        elif any(s.prepocteno for s in el.skla):     # tj. profily jsou v tabulkách
+            clanky = dict.fromkeys([el.ram] + el.delice + [s.kridlo for s in el.skla if s.kridlo])
+            zprava.append("    " + ", ".join(" -> ".join(PROFILY[c]) for c in clanky))
         for s in el.skla:
             zmena = (f"{s.sirka_nova:>7.1f} x {s.vyska_nova:>7.1f}"
-                     f"   ({POPIS[_rezim(s)]})"
+                     f"   ({PROFILY[s.kridlo][0] if s.kridlo else 'fix'})"
                      if s.prepocteno else "BEZE ZMĚNY")
             zprava.append(f"    Fe {s.fe:<4} {s.sirka:>7.1f} x {s.vyska:>7.1f}  ->  {zmena}")
         zmeny_kridel = {}                          # dole a nahoře mají stejnou délku
@@ -455,16 +510,23 @@ def spust(vstup, vystup, soubory=None, corona=()):
         for (fe, vodorovne, rez, rez_novy), ks in zmeny_kridel.items():
             zprava.append(f"    křídlo Fe {fe:<4} {'šířka' if vodorovne else 'výška'}"
                           f" {ks}x  {rez:>7.1f}  ->  {rez_novy:>7.1f}")
+        boky = [(b.rez, b.rez_novy) for b in el.boky if b.rez_novy]
+        for rez, rez_novy in dict.fromkeys(boky):
+            zprava.append(f"    rám boky {boky.count((rez, rez_novy))}x  {rez:>7.1f}  ->  "
+                          f"{rez_novy:>7.1f}   (práh LivIng 25255500/600)")
         zprava += [f"    ! {p}" for p in el.poznamky]
 
     optimalizace = [f for f in glob.glob(os.path.join(vstup, "*.rtf"))
                     if "ptimalizace" in os.path.basename(f)]
     if optimalizace:
-        # Kus se páruje přes pozici, Fe a orientaci; části -1 a -3 jsou vodorovné
-        # a mají shodnou délku, stejně tak -2 a -4 svislé.
+        # Křídlo se páruje přes pozici, Fe a orientaci; části -1 a -3 jsou vodorovné
+        # a mají shodnou délku, stejně tak -2 a -4 svislé. Bok rámu přes pozici
+        # a popisek Bl 2 / Bl 4 (číslo strany jako v kusovníku).
         nove = {(el.pozice, k.fe, k.vodorovne): k.rez_novy
                 for el in elementy for k in el.kridla
                 if k.prepocteno and k.rez_novy != k.rez}
+        nove.update({(el.pozice, f"Bl {b.cislo}"): b.rez_novy
+                     for el in elementy for b in el.boky if b.rez_novy})
         raw = open(optimalizace[0], encoding="latin-1").read()
         radky = [(m.start(), m.end(),
                   [_text(c) for c in re.split(r"\\cell(?![a-zA-Z])", m.group(0))[:-1]])
@@ -476,10 +538,11 @@ def spust(vstup, vystup, soubory=None, corona=()):
             pozice, popisky = radky[i + 2][2], radky[i + 3][2]
             zmeny = []
             for j in range(1, min(len(b), len(pozice), len(popisky))):
-                if not popisky[j].startswith("Fl "):
-                    continue
-                fe, _, cast = popisky[j][3:].rpartition("-")
-                klic = (pozice[j], fe, int(cast) % 2 == 1)
+                if popisky[j].startswith(("Fl ", "Tr ")):    # okenní / dveřní křídlo
+                    fe, _, cast = popisky[j][3:].rpartition("-")
+                    klic = (pozice[j], fe, int(cast) % 2 == 1)
+                else:                                    # bok rámu
+                    klic = (pozice[j], popisky[j])
                 if klic in nove:
                     zmeny.append((j, nove[klic]))
             if zmeny:
@@ -487,7 +550,7 @@ def spust(vstup, vystup, soubory=None, corona=()):
         _prepis_bunky(raw, radky, upravy,
                       os.path.join(vystup, "Optimalizace_přířezu_LivIng_MD.rtf"))
         zprava.append(f"\nOptimalizace přířezu: přepsáno "
-                      f"{sum(len(z) for _, z in upravy)} řezných délek křídel "
+                      f"{sum(len(z) for _, z in upravy)} řezných délek křídel a rámů "
                       "-> Optimalizace_přířezu_LivIng_MD.rtf")
 
     ks, m2, zamcene = zapis_seznam_skel(elementy, vystup)
